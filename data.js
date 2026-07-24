@@ -1,6 +1,6 @@
 /**
- * attendX Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
- * Core Data & Storage Handler with Credit-Based Semester Class Capacities & Calendar Date Tracking
+ 
+ * Core Data & Storage Handler with Pure 0-Baseline Initial State
  */
 
 // All Available Courses in Curriculum with Credit Capacities:
@@ -29,13 +29,13 @@ const ALL_COURSES = {
   "GED3101": { code: "GED 3101", name: "Communication Skills for Career Success", type: "Lab", credits: 1, semesterTotal: 15, faculty: "Dr. S. Sakthivel / Dr. T. Sugadev" }
 };
 
-// 7 Registered attendX Students with Unique Passwords
+// 7 Registered Crescent Students with Unique Passwords
 const INITIAL_STUDENTS = [
   {
     id: "std-1176",
     rrn: "240171601176",
     name: "Shaik Mohamed",
-    email: "240171601176@attendX.education",
+    email: "240171601176@crescent.education",
     password: "student@1176",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -47,7 +47,7 @@ const INITIAL_STUDENTS = [
     id: "std-1182",
     rrn: "240171601182",
     name: "Syed Ishaaq",
-    email: "240171601182@attendX.education",
+    email: "240171601182@crescent.education",
     password: "student@1182",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -59,7 +59,7 @@ const INITIAL_STUDENTS = [
     id: "std-1178",
     rrn: "240171601178",
     name: "Shamith Hussain",
-    email: "240171601178@attendX.education",
+    email: "240171601178@crescent.education",
     password: "student@1178",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -71,7 +71,7 @@ const INITIAL_STUDENTS = [
     id: "std-1190",
     rrn: "240171601190",
     name: "Mohamed Nadish",
-    email: "240171601190@attendX.education",
+    email: "240171601190@crescent.education",
     password: "student@1190",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -83,7 +83,7 @@ const INITIAL_STUDENTS = [
     id: "std-1189",
     rrn: "240171601189",
     name: "Mohamed Fardeen",
-    email: "240171601189@attendX.education",
+    email: "240171601189@crescent.education",
     password: "student@1189",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -95,7 +95,7 @@ const INITIAL_STUDENTS = [
     id: "std-1164",
     rrn: "240171601164",
     name: "Mohamed Omer Akhil",
-    email: "240171601164@attendX.education",
+    email: "240171601164@crescent.education",
     password: "student@1164",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -107,7 +107,7 @@ const INITIAL_STUDENTS = [
     id: "std-1180",
     rrn: "240171601180",
     name: "Suhail Ahmed Baig",
-    email: "240171601180@attendX.education",
+    email: "240171601180@crescent.education",
     password: "student@1180",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -117,17 +117,13 @@ const INITIAL_STUDENTS = [
   }
 ];
 
-// Helper to generate 100% initial baseline for all subjects with credit capacities
+// Helper to generate PURE ZERO BASELINE (0 Attended, 0 Conducted = 100% Initial Slate)
 function buildStudentSubjects(electiveKeys) {
   const regularKeys = ["CSD3151", "CSD3152", "CSD3153", "CSD3154", "CSD3155", "CSD3156", "CSD3159", "GED3101"];
   const allKeys = [...regularKeys, ...electiveKeys];
 
   return allKeys.map(key => {
     const course = ALL_COURSES[key];
-    // Baseline 100% attendance: 12 conducted classes held since July 15, 12 attended, 0 missed
-    let conducted = 12; 
-    let attended = 12; 
-    
     return {
       id: key.toLowerCase(),
       code: course.code,
@@ -137,8 +133,8 @@ function buildStudentSubjects(electiveKeys) {
       semesterTotal: course.semesterTotal, // 60 for 4-credit, 45 for 3-credit, 15 for 1-credit
       faculty: course.faculty,
       minPercentage: 75,
-      attended: attended,
-      total: conducted
+      attended: 0, // Starts at ZERO!
+      total: 0     // Starts at ZERO!
     };
   });
 }
@@ -190,8 +186,8 @@ const RAW_WEEKLY_TIMETABLE = {
 
 // Storage Manager
 class AttendanceStore {
-  static STORAGE_KEY = "attendance_attendX_v5";
-  static ACTIVE_USER_KEY = "active_attendX_user_v5";
+  static STORAGE_KEY = "attendance_crescent_v6";
+  static ACTIVE_USER_KEY = "active_crescent_user_v6";
 
   static init() {
     if (!localStorage.getItem(this.STORAGE_KEY)) {
@@ -332,8 +328,8 @@ class AttendanceStore {
       code: newSubjectData.code.toUpperCase(),
       name: newSubjectData.name,
       minPercentage: parseInt(newSubjectData.minPercentage) || 75,
-      attended: parseInt(newSubjectData.attended) || 0,
-      total: parseInt(newSubjectData.total) || 0,
+      attended: 0,
+      total: 0,
       credits: credits,
       semesterTotal: semTotal,
       type: "Custom",
@@ -359,7 +355,7 @@ class AttendanceStore {
 // Global Calculations Math Helpers
 const AttendanceMath = {
   calculatePercentage(attended, total) {
-    if (!total || total === 0) return 100;
+    if (!total || total === 0) return 100; // 0 conducted classes = 100% baseline!
     return parseFloat(((attended / total) * 100).toFixed(1));
   },
 
@@ -400,7 +396,6 @@ const AttendanceMath = {
     return Math.max(0, required);
   },
 
-  // Calculate maximum total bunks for the full semester capacity (60 for 4-credit, 45 for 3-credit)
   calculateMaxSemesterBunks(semesterTotal, minTarget = 75) {
     const minRequiredAttended = Math.ceil((minTarget / 100) * semesterTotal);
     return semesterTotal - minRequiredAttended;
