@@ -422,4 +422,29 @@ const AttendanceMath = {
     const currentPct = total > 0 ? (attended / total) : 1;
     if (currentPct >= target) return 0;
 
-    const required = Math.ceil((target * total - atte
+    const required = Math.ceil((target * total - attended) / (1 - target));
+    return Math.max(0, required);
+  },
+
+  calculateMaxSemesterBunks(semesterTotal, minTarget = 75) {
+    const minRequiredAttended = Math.ceil((minTarget / 100) * semesterTotal);
+    return semesterTotal - minRequiredAttended;
+  },
+
+  simulateLeaves(attended, total, upcomingLeaves, minTarget = 75) {
+    const newTotal = total + upcomingLeaves;
+    const newAttended = attended;
+    const newPct = parseFloat(((newAttended / newTotal) * 100).toFixed(1));
+    const isSafe = newPct >= minTarget;
+    const dropAmount = parseFloat(((attended / total * 100) - newPct).toFixed(1));
+
+    return {
+      newTotal,
+      newAttended,
+      newPct,
+      isSafe,
+      dropAmount,
+      statusCategory: this.getStatusCategory(newPct, minTarget)
+    };
+  }
+};
