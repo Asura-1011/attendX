@@ -12,9 +12,9 @@ let isDarkMode = true;
 // Initialize on DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
   // Clear obsolete cache to force clean 0-baseline Crescent student data load
-  if (!localStorage.getItem("attendance_crescent_v6")) {
+  if (!localStorage.getItem("crescent_app_version_v7")) {
     localStorage.clear();
-    localStorage.setItem("attendance_crescent_v6", "true");
+    localStorage.setItem("crescent_app_version_v7", "v7");
   }
 
   // Initialize theme mode
