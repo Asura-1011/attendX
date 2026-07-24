@@ -1,5 +1,5 @@
 /**
- 
+ * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
  * Core Data & Storage Handler with Pure 0-Baseline Initial State
  */
 
@@ -120,21 +120,21 @@ const INITIAL_STUDENTS = [
 // Helper to generate PURE ZERO BASELINE (0 Attended, 0 Conducted = 100% Initial Slate)
 function buildStudentSubjects(electiveKeys) {
   const regularKeys = ["CSD3151", "CSD3152", "CSD3153", "CSD3154", "CSD3155", "CSD3156", "CSD3159", "GED3101"];
-  const allKeys = [...regularKeys, ...electiveKeys];
+  const allKeys = [...regularKeys, ...(electiveKeys || [])];
 
   return allKeys.map(key => {
     const course = ALL_COURSES[key];
     return {
       id: key.toLowerCase(),
-      code: course.code,
-      name: course.name,
-      type: course.type,
-      credits: course.credits,
-      semesterTotal: course.semesterTotal, // 60 for 4-credit, 45 for 3-credit, 15 for 1-credit
-      faculty: course.faculty,
+      code: course ? course.code : key,
+      name: course ? course.name : key,
+      type: course ? course.type : "Regular",
+      credits: course ? course.credits : 3,
+      semesterTotal: course ? course.semesterTotal : 45,
+      faculty: course ? course.faculty : "Faculty",
       minPercentage: 75,
-      attended: 0, // Starts at ZERO!
-      total: 0     // Starts at ZERO!
+      attended: 0,
+      total: 0
     };
   });
 }
@@ -186,11 +186,27 @@ const RAW_WEEKLY_TIMETABLE = {
 
 // Storage Manager
 class AttendanceStore {
-  static STORAGE_KEY = "attendance_crescent_v6";
-  static ACTIVE_USER_KEY = "active_crescent_user_v6";
+  static STORAGE_KEY = "crescent_student_accounts_v7";
+  static ACTIVE_USER_KEY = "crescent_active_session_v7";
 
   static init() {
-    if (!localStorage.getItem(this.STORAGE_KEY)) {
+    let raw = localStorage.getItem(this.STORAGE_KEY);
+    let needReset = false;
+
+    if (!raw) {
+      needReset = true;
+    } else {
+      try {
+        let parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          needReset = true;
+        }
+      } catch (e) {
+        needReset = true;
+      }
+    }
+
+    if (needReset) {
       const data = INITIAL_STUDENTS.map(s => {
         const subjects = buildStudentSubjects(s.electives);
         return {
@@ -206,14 +222,25 @@ class AttendanceStore {
   static getStudents() {
     this.init();
     try {
-      return JSON.parse(localStorage.getItem(this.STORAGE_KEY)) || [];
-    } catch (e) {
-      return [];
-    }
+      let raw = localStorage.getItem(this.STORAGE_KEY);
+      let parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (e) {}
+
+    // Fallback if parsing fails
+    return INITIAL_STUDENTS.map(s => ({
+      ...s,
+      subjects: buildStudentSubjects(s.electives),
+      history: []
+    }));
   }
 
   static saveStudents(students) {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(students));
+    if (Array.isArray(students)) {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(students));
+    }
   }
 
   static getActiveUser() {
@@ -238,12 +265,16 @@ class AttendanceStore {
 
   static authenticate(credential, password) {
     const students = this.getStudents();
-    const cleanInput = credential.trim().toLowerCase();
+    if (!Array.isArray(students)) {
+      return { success: false, message: "Storage error. Please refresh." };
+    }
+
+    const cleanInput = (credential || "").trim().toLowerCase();
     
     const student = students.find(s => 
-      s.email.toLowerCase() === cleanInput || 
-      s.rrn.toLowerCase() === cleanInput ||
-      s.rrn.toLowerCase() === cleanInput.split('@')[0]
+      (s.email && s.email.toLowerCase() === cleanInput) || 
+      (s.rrn && s.rrn.toLowerCase() === cleanInput) ||
+      (s.rrn && s.rrn.toLowerCase() === cleanInput.split('@')[0])
     );
 
     if (!student) {
@@ -258,7 +289,6 @@ class AttendanceStore {
     return { success: true, student };
   }
 
-  // Enhanced Attendance Marking with Custom Date Selection
   static markAttendanceWithDate(studentId, subjectId, isPresent, selectedDateStr, note = "") {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
@@ -355,7 +385,7 @@ class AttendanceStore {
 // Global Calculations Math Helpers
 const AttendanceMath = {
   calculatePercentage(attended, total) {
-    if (!total || total === 0) return 100; // 0 conducted classes = 100% baseline!
+    if (!total || total === 0) return 100;
     return parseFloat(((attended / total) * 100).toFixed(1));
   },
 
@@ -392,29 +422,4 @@ const AttendanceMath = {
     const currentPct = total > 0 ? (attended / total) : 1;
     if (currentPct >= target) return 0;
 
-    const required = Math.ceil((target * total - attended) / (1 - target));
-    return Math.max(0, required);
-  },
-
-  calculateMaxSemesterBunks(semesterTotal, minTarget = 75) {
-    const minRequiredAttended = Math.ceil((minTarget / 100) * semesterTotal);
-    return semesterTotal - minRequiredAttended;
-  },
-
-  simulateLeaves(attended, total, upcomingLeaves, minTarget = 75) {
-    const newTotal = total + upcomingLeaves;
-    const newAttended = attended;
-    const newPct = parseFloat(((newAttended / newTotal) * 100).toFixed(1));
-    const isSafe = newPct >= minTarget;
-    const dropAmount = parseFloat(((attended / total * 100) - newPct).toFixed(1));
-
-    return {
-      newTotal,
-      newAttended,
-      newPct,
-      isSafe,
-      dropAmount,
-      statusCategory: this.getStatusCategory(newPct, minTarget)
-    };
-  }
-};
+    const required = Math.ceil((target * total - atte
