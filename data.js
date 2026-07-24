@@ -1,5 +1,5 @@
 /**
- * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
+ * attendX Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
  * Core Data & Storage Handler with Credit-Based Semester Class Capacities & Calendar Date Tracking
  */
 
@@ -29,13 +29,13 @@ const ALL_COURSES = {
   "GED3101": { code: "GED 3101", name: "Communication Skills for Career Success", type: "Lab", credits: 1, semesterTotal: 15, faculty: "Dr. S. Sakthivel / Dr. T. Sugadev" }
 };
 
-// 7 Registered Crescent Students with Unique Passwords
+// 7 Registered attendX Students with Unique Passwords
 const INITIAL_STUDENTS = [
   {
     id: "std-1176",
     rrn: "240171601176",
     name: "Shaik Mohamed",
-    email: "240171601176@crescent.education",
+    email: "240171601176@attendX.education",
     password: "student@1176",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -47,7 +47,7 @@ const INITIAL_STUDENTS = [
     id: "std-1182",
     rrn: "240171601182",
     name: "Syed Ishaaq",
-    email: "240171601182@crescent.education",
+    email: "240171601182@attendX.education",
     password: "student@1182",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -59,7 +59,7 @@ const INITIAL_STUDENTS = [
     id: "std-1178",
     rrn: "240171601178",
     name: "Shamith Hussain",
-    email: "240171601178@crescent.education",
+    email: "240171601178@attendX.education",
     password: "student@1178",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -71,7 +71,7 @@ const INITIAL_STUDENTS = [
     id: "std-1190",
     rrn: "240171601190",
     name: "Mohamed Nadish",
-    email: "240171601190@crescent.education",
+    email: "240171601190@attendX.education",
     password: "student@1190",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -83,7 +83,7 @@ const INITIAL_STUDENTS = [
     id: "std-1189",
     rrn: "240171601189",
     name: "Mohamed Fardeen",
-    email: "240171601189@crescent.education",
+    email: "240171601189@attendX.education",
     password: "student@1189",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -95,7 +95,7 @@ const INITIAL_STUDENTS = [
     id: "std-1164",
     rrn: "240171601164",
     name: "Mohamed Omer Akhil",
-    email: "240171601164@crescent.education",
+    email: "240171601164@attendX.education",
     password: "student@1164",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -107,7 +107,7 @@ const INITIAL_STUDENTS = [
     id: "std-1180",
     rrn: "240171601180",
     name: "Suhail Ahmed Baig",
-    email: "240171601180@crescent.education",
+    email: "240171601180@attendX.education",
     password: "student@1180",
     department: "B.Tech AI & DS",
     semester: "Semester V (Sec C)",
@@ -190,8 +190,8 @@ const RAW_WEEKLY_TIMETABLE = {
 
 // Storage Manager
 class AttendanceStore {
-  static STORAGE_KEY = "attendance_crescent_v5";
-  static ACTIVE_USER_KEY = "active_crescent_user_v5";
+  static STORAGE_KEY = "attendance_attendX_v5";
+  static ACTIVE_USER_KEY = "active_attendX_user_v5";
 
   static init() {
     if (!localStorage.getItem(this.STORAGE_KEY)) {
