@@ -1,6 +1,6 @@
 /**
  * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
- * Core Data & Storage Handler with 100% Baseline, Anti-Cheating Date Lock & Cloud Sync
+ * Core Data & Storage Handler with Firebase Cloud Sync & Direct Subject Card Undo
  */
 
 // All Available Courses in Curriculum with Credit Capacities:
@@ -180,13 +180,13 @@ const RAW_WEEKLY_TIMETABLE = {
   ]
 };
 
-// Storage & Real-Time Cloud Sync Manager
+// Storage & Bulletproof Cross-Device Firebase REST Sync Manager
 class AttendanceStore {
-  static STORAGE_KEY = "crescent_student_accounts_v9";
-  static ACTIVE_USER_KEY = "crescent_active_session_v9";
+  static STORAGE_KEY = "crescent_student_accounts_v10";
+  static ACTIVE_USER_KEY = "crescent_active_session_v10";
   
-  static CLOUD_SYNC_URL = "https://keyvalue.immanuel.co/api/KeyVal/GetValue/crescent_attendx_v9_db";
-  static CLOUD_UPDATE_URL = "https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/crescent_attendx_v9_db/";
+  // Real-Time Firebase REST Database Endpoint for Instant Phone <-> Laptop Cloud Sync
+  static FIREBASE_URL = "https://crescent-attendx-default-rtdb.firebaseio.com/students_v10.json";
 
   static init() {
     let raw = localStorage.getItem(this.STORAGE_KEY);
@@ -243,27 +243,30 @@ class AttendanceStore {
     }
   }
 
+  // Cross-Device Cloud Sync (Phone <-> Laptop <-> PC) via Firebase REST API
   static async syncToCloud(data) {
     try {
-      const jsonStr = encodeURIComponent(JSON.stringify(data));
-      fetch(this.CLOUD_UPDATE_URL + jsonStr, { method: "POST" }).catch(() => {});
+      await fetch(this.FIREBASE_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
     } catch (e) {}
   }
 
   static async fetchFromCloud(onSyncCallback) {
     try {
-      const res = await fetch(this.CLOUD_SYNC_URL);
+      const res = await fetch(this.FIREBASE_URL);
       if (res.ok) {
-        const text = await res.text();
-        if (text && text !== "null") {
-          const cloudData = JSON.parse(decodeURIComponent(text));
-          if (Array.isArray(cloudData) && cloudData.length > 0) {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cloudData));
-            if (onSyncCallback) onSyncCallback(cloudData);
-          }
+        const cloudData = await res.json();
+        if (Array.isArray(cloudData) && cloudData.length > 0) {
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cloudData));
+          if (onSyncCallback) onSyncCallback(cloudData);
+          return true;
         }
       }
     } catch (e) {}
+    return false;
   }
 
   static getActiveUser() {
@@ -323,7 +326,7 @@ class AttendanceStore {
     return existingLog || false;
   }
 
-  // Anti-Cheating Locked Attendance Marking (Strict Single Entry Per Date)
+  // Attendance Marking
   static markAttendanceWithDate(studentId, subjectId, isPresent, selectedDateStr, note = "") {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
@@ -331,12 +334,12 @@ class AttendanceStore {
 
     const markDate = selectedDateStr || new Date().toISOString().split("T")[0];
 
-    // Anti-Cheating Lock: Check if already logged for this date!
+    // Anti-Cheating Lock Check
     const existingLog = student.history ? student.history.find(l => l.subjectId === subjectId && l.date === markDate) : null;
     if (existingLog) {
       return {
         isLocked: true,
-        message: `Attendance for this subject on ${markDate} has already been logged (${existingLog.status.toUpperCase()}). To change it, please use the Undo button in Leave History.`
+        message: `Attendance for this subject on ${markDate} has already been logged (${existingLog.status.toUpperCase()}). Click "Undo & Re-mark" directly on the subject card to change it.`
       };
     }
 
@@ -349,7 +352,6 @@ class AttendanceStore {
       subject.missed += 1;
       subject.attended = Math.max(0, subject.total - subject.missed);
     } else {
-      // Present confirms attendance
       subject.attended = Math.min(subject.total, subject.total - subject.missed);
     }
 
@@ -370,6 +372,30 @@ class AttendanceStore {
 
     this.saveStudents(students);
     return { student, subject, newLog, isLocked: false };
+  }
+
+  // Direct Card Undo: Reverts the logged mark directly on the Subject Card & unlocks it!
+  static undoLatestSubjectMark(studentId, subjectId) {
+    const students = this.getStudents();
+    const student = students.find(s => s.id === studentId);
+    if (!student || !student.history) return false;
+
+    const logIndex = student.history.findIndex(l => l.subjectId === subjectId);
+    if (logIndex === -1) return false;
+
+    const log = student.history[logIndex];
+    const subject = student.subjects.find(sub => sub.id === log.subjectId);
+    
+    if (subject) {
+      if (log.status === "absent" && subject.missed > 0) {
+        subject.missed -= 1;
+        subject.attended = Math.min(subject.total, subject.total - subject.missed);
+      }
+    }
+
+    student.history.splice(logIndex, 1);
+    this.saveStudents(students);
+    return true;
   }
 
   static undoLogEntry(studentId, logId) {
