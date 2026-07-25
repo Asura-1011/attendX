@@ -1,20 +1,15 @@
 /**
  * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
- * Core Data & Storage Handler with Pure 0-Baseline Initial State
+ * Core Data & Storage Handler with 100% Baseline, Anti-Cheating Date Lock & Cloud Sync
  */
 
 // All Available Courses in Curriculum with Credit Capacities:
-// 4-Credit Courses = 60 Semester Classes
-// 3-Credit Courses = 45 Semester Classes
-// 1-Credit Labs = 15 Semester Classes
 const ALL_COURSES = {
-  // Regular Theory Courses
   "CSD3151": { code: "CSD 3151", name: "Data and Network Security", type: "Regular", credits: 3, semesterTotal: 45, faculty: "Mrs. G. Safiya Begam" },
   "CSD3152": { code: "CSD 3152", name: "Cloud Computing Services", type: "Regular", credits: 4, semesterTotal: 60, faculty: "Dr. G. Aarthi" },
   "CSD3153": { code: "CSD 3153", name: "Automata Theory", type: "Regular", credits: 3, semesterTotal: 45, faculty: "Mrs. A. Sulthana Rashya Begam" },
   "CSD3154": { code: "CSD 3154", name: "Machine Learning Techniques", type: "Regular", credits: 3, semesterTotal: 45, faculty: "Mrs. M.S. Usha" },
 
-  // Elective Courses (CSDX)
   "CSDX501": { code: "CSDX 501", name: "Web and Social Media Mining", type: "Elective", credits: 3, semesterTotal: 45, faculty: "Faculty 8" },
   "CSDX502": { code: "CSDX 502", name: "Artificial Neural Networks", type: "Elective", credits: 3, semesterTotal: 45, faculty: "Dr. S. Revathi" },
   "CSDX503": { code: "CSDX 503", name: "Artificial Intelligence based Web Application", type: "Elective", credits: 3, semesterTotal: 45, faculty: "Mrs. A. Nazreen" },
@@ -22,14 +17,13 @@ const ALL_COURSES = {
   "CSDX509": { code: "CSDX 509", name: "Pattern Recognition", type: "Elective", credits: 3, semesterTotal: 45, faculty: "Dr. B. Dhanalakshmi" },
   "CSDX513": { code: "CSDX 513", name: "Intrusion Detection and Data Analytics", type: "Elective", credits: 3, semesterTotal: 45, faculty: "Mrs. A. Sulthana Rashya Begam" },
 
-  // Labs & Practical
   "CSD3155": { code: "CSD 3155", name: "Machine Learning Laboratory", type: "Lab", credits: 1, semesterTotal: 15, faculty: "Mrs. M.S. Usha" },
   "CSD3156": { code: "CSD 3156", name: "Data and Security Laboratory", type: "Lab", credits: 1, semesterTotal: 15, faculty: "Mrs. G. Safiya Begam" },
   "CSD3159": { code: "CSD 3159", name: "Internship I", type: "Lab", credits: 1, semesterTotal: 15, faculty: "Mrs. M.S. Usha" },
   "GED3101": { code: "GED 3101", name: "Communication Skills for Career Success", type: "Lab", credits: 1, semesterTotal: 15, faculty: "Dr. S. Sakthivel / Dr. T. Sugadev" }
 };
 
-// 7 Registered Crescent Students with Unique Passwords
+// 7 Registered Crescent Students
 const INITIAL_STUDENTS = [
   {
     id: "std-1176",
@@ -117,29 +111,31 @@ const INITIAL_STUDENTS = [
   }
 ];
 
-// Helper to generate PURE ZERO BASELINE (0 Attended, 0 Conducted = 100% Initial Slate)
 function buildStudentSubjects(electiveKeys) {
   const regularKeys = ["CSD3151", "CSD3152", "CSD3153", "CSD3154", "CSD3155", "CSD3156", "CSD3159", "GED3101"];
   const allKeys = [...regularKeys, ...(electiveKeys || [])];
 
   return allKeys.map(key => {
     const course = ALL_COURSES[key];
+    const semTotal = course ? course.semesterTotal : 45;
+
     return {
       id: key.toLowerCase(),
       code: course ? course.code : key,
       name: course ? course.name : key,
       type: course ? course.type : "Regular",
       credits: course ? course.credits : 3,
-      semesterTotal: course ? course.semesterTotal : 45,
+      semesterTotal: semTotal,
       faculty: course ? course.faculty : "Faculty",
       minPercentage: 75,
-      attended: 0,
-      total: 0
+      total: semTotal,
+      attended: semTotal,
+      missed: 0
     };
   });
 }
 
-// Master Weekly Timetable Grid from College Timetable Sheet
+// Master Weekly Timetable Grid
 const RAW_WEEKLY_TIMETABLE = {
   Monday: [
     { time: "09:00 AM - 10:40 AM", type: "lab", name: "Web & Security Laboratory (CSD 3152/55/56)", room: "Webtech Lab 1 / Lab 2 / Network Lab", isElective: false },
@@ -184,10 +180,13 @@ const RAW_WEEKLY_TIMETABLE = {
   ]
 };
 
-// Storage Manager
+// Storage & Real-Time Cloud Sync Manager
 class AttendanceStore {
-  static STORAGE_KEY = "crescent_student_accounts_v7";
-  static ACTIVE_USER_KEY = "crescent_active_session_v7";
+  static STORAGE_KEY = "crescent_student_accounts_v9";
+  static ACTIVE_USER_KEY = "crescent_active_session_v9";
+  
+  static CLOUD_SYNC_URL = "https://keyvalue.immanuel.co/api/KeyVal/GetValue/crescent_attendx_v9_db";
+  static CLOUD_UPDATE_URL = "https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/crescent_attendx_v9_db/";
 
   static init() {
     let raw = localStorage.getItem(this.STORAGE_KEY);
@@ -216,6 +215,7 @@ class AttendanceStore {
         };
       });
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      this.syncToCloud(data);
     }
   }
 
@@ -229,7 +229,6 @@ class AttendanceStore {
       }
     } catch (e) {}
 
-    // Fallback if parsing fails
     return INITIAL_STUDENTS.map(s => ({
       ...s,
       subjects: buildStudentSubjects(s.electives),
@@ -240,7 +239,31 @@ class AttendanceStore {
   static saveStudents(students) {
     if (Array.isArray(students)) {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(students));
+      this.syncToCloud(students);
     }
+  }
+
+  static async syncToCloud(data) {
+    try {
+      const jsonStr = encodeURIComponent(JSON.stringify(data));
+      fetch(this.CLOUD_UPDATE_URL + jsonStr, { method: "POST" }).catch(() => {});
+    } catch (e) {}
+  }
+
+  static async fetchFromCloud(onSyncCallback) {
+    try {
+      const res = await fetch(this.CLOUD_SYNC_URL);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text !== "null") {
+          const cloudData = JSON.parse(decodeURIComponent(text));
+          if (Array.isArray(cloudData) && cloudData.length > 0) {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cloudData));
+            if (onSyncCallback) onSyncCallback(cloudData);
+          }
+        }
+      }
+    } catch (e) {}
   }
 
   static getActiveUser() {
@@ -289,20 +312,47 @@ class AttendanceStore {
     return { success: true, student };
   }
 
+  // Anti-Cheating Lock Check for Date
+  static isSubjectLockedForDate(studentId, subjectId, dateStr) {
+    const students = this.getStudents();
+    const student = students.find(s => s.id === studentId);
+    if (!student || !student.history) return false;
+
+    const targetDate = dateStr || new Date().toISOString().split("T")[0];
+    const existingLog = student.history.find(l => l.subjectId === subjectId && l.date === targetDate);
+    return existingLog || false;
+  }
+
+  // Anti-Cheating Locked Attendance Marking (Strict Single Entry Per Date)
   static markAttendanceWithDate(studentId, subjectId, isPresent, selectedDateStr, note = "") {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return null;
 
+    const markDate = selectedDateStr || new Date().toISOString().split("T")[0];
+
+    // Anti-Cheating Lock: Check if already logged for this date!
+    const existingLog = student.history ? student.history.find(l => l.subjectId === subjectId && l.date === markDate) : null;
+    if (existingLog) {
+      return {
+        isLocked: true,
+        message: `Attendance for this subject on ${markDate} has already been logged (${existingLog.status.toUpperCase()}). To change it, please use the Undo button in Leave History.`
+      };
+    }
+
     const subject = student.subjects.find(sub => sub.id === subjectId);
     if (!subject) return null;
 
-    subject.total += 1;
-    if (isPresent) {
-      subject.attended += 1;
+    if (typeof subject.missed !== 'number') subject.missed = 0;
+
+    if (!isPresent) {
+      subject.missed += 1;
+      subject.attended = Math.max(0, subject.total - subject.missed);
+    } else {
+      // Present confirms attendance
+      subject.attended = Math.min(subject.total, subject.total - subject.missed);
     }
 
-    const markDate = selectedDateStr || new Date().toISOString().split("T")[0];
     const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     if (!student.history) student.history = [];
@@ -314,12 +364,12 @@ class AttendanceStore {
       subjectCode: subject.code,
       subjectName: subject.name,
       status: isPresent ? "present" : "absent",
-      note: note || (isPresent ? "Marked Present" : "Marked Leave / Absent")
+      note: note || (isPresent ? "Attended Class / Confirmed" : "Marked Absence / Leave")
     };
     student.history.unshift(newLog);
 
     this.saveStudents(students);
-    return { student, subject, newLog };
+    return { student, subject, newLog, isLocked: false };
   }
 
   static undoLogEntry(studentId, logId) {
@@ -333,10 +383,10 @@ class AttendanceStore {
     const log = student.history[logIndex];
     const subject = student.subjects.find(sub => sub.id === log.subjectId);
     
-    if (subject && subject.total > 0) {
-      subject.total -= 1;
-      if (log.status === "present" && subject.attended > 0) {
-        subject.attended -= 1;
+    if (subject) {
+      if (log.status === "absent" && subject.missed > 0) {
+        subject.missed -= 1;
+        subject.attended = Math.min(subject.total, subject.total - subject.missed);
       }
     }
 
@@ -358,8 +408,9 @@ class AttendanceStore {
       code: newSubjectData.code.toUpperCase(),
       name: newSubjectData.name,
       minPercentage: parseInt(newSubjectData.minPercentage) || 75,
-      attended: 0,
-      total: 0,
+      total: semTotal,
+      attended: semTotal,
+      missed: 0,
       credits: credits,
       semesterTotal: semTotal,
       type: "Custom",
@@ -391,15 +442,15 @@ const AttendanceMath = {
 
   calculateOverall(subjects) {
     if (!subjects || subjects.length === 0) return { percentage: 100, attended: 0, total: 0, missed: 0 };
-    const totalAttended = subjects.reduce((sum, s) => sum + s.attended, 0);
-    const totalHeld = subjects.reduce((sum, s) => sum + s.total, 0);
-    const totalMissed = totalHeld - totalAttended;
-    const percentage = totalHeld > 0 ? parseFloat(((totalAttended / totalHeld) * 100).toFixed(1)) : 100;
+    const totalAttended = subjects.reduce((sum, s) => sum + (s.attended !== undefined ? s.attended : s.total), 0);
+    const totalCapacity = subjects.reduce((sum, s) => sum + s.total, 0);
+    const totalMissed = subjects.reduce((sum, s) => sum + (s.missed || 0), 0);
+    const percentage = totalCapacity > 0 ? parseFloat(((totalAttended / totalCapacity) * 100).toFixed(1)) : 100;
     
     return {
       percentage,
       attended: totalAttended,
-      total: totalHeld,
+      total: totalCapacity,
       missed: totalMissed
     };
   },
@@ -411,15 +462,14 @@ const AttendanceMath = {
   },
 
   calculateSafeSkips(attended, total, minTarget = 75) {
-    const target = minTarget / 100;
-    if (total === 0) return 0;
-    const safeSkips = Math.floor((attended - target * total) / target);
+    const minRequiredAttended = Math.ceil((minTarget / 100) * total);
+    const safeSkips = attended - minRequiredAttended;
     return Math.max(0, safeSkips);
   },
 
   calculateRequiredClasses(attended, total, minTarget = 75) {
     const target = minTarget / 100;
-    const currentPct = total > 0 ? (attended / total) : 1;
+    const currentPct = (attended / total);
     if (currentPct >= target) return 0;
 
     const required = Math.ceil((target * total - attended) / (1 - target));
@@ -432,14 +482,13 @@ const AttendanceMath = {
   },
 
   simulateLeaves(attended, total, upcomingLeaves, minTarget = 75) {
-    const newTotal = total + upcomingLeaves;
-    const newAttended = attended;
-    const newPct = parseFloat(((newAttended / newTotal) * 100).toFixed(1));
+    const newAttended = Math.max(0, attended - upcomingLeaves);
+    const newPct = parseFloat(((newAttended / total) * 100).toFixed(1));
     const isSafe = newPct >= minTarget;
-    const dropAmount = parseFloat(((attended / total * 100) - newPct).toFixed(1));
+    const dropAmount = parseFloat((((attended / total) * 100) - newPct).toFixed(1));
 
     return {
-      newTotal,
+      newTotal: total,
       newAttended,
       newPct,
       isSafe,
