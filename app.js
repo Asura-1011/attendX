@@ -7,17 +7,16 @@
 let currentStudent = null;
 let currentTab = "overview"; // 'overview', 'predictor', 'timetable', 'history', 'credentials'
 let activeTimetableDay = "Monday";
+let dashboardViewFilter = "today"; // 'today' or 'all'
 let isDarkMode = true;
 
 // Initialize on DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
-  // Clear obsolete cache to force clean 0-baseline Crescent student data load
-  if (!localStorage.getItem("crescent_app_version_v7")) {
+  if (!localStorage.getItem("crescent_app_version_v9")) {
     localStorage.clear();
-    localStorage.setItem("crescent_app_version_v7", "v7");
+    localStorage.setItem("crescent_app_version_v9", "v9");
   }
 
-  // Initialize theme mode
   isDarkMode = localStorage.getItem("theme_mode") !== "light";
   if (!isDarkMode) {
     document.documentElement.setAttribute("data-theme", "light");
@@ -25,6 +24,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   activeTimetableDay = getCurrentDayName();
   renderApp();
+
+  // Real-Time Cross-Device Sync (Phone <-> PC)
+  AttendanceStore.fetchFromCloud(() => {
+    renderApp();
+  });
 });
 
 // Helper to get current day name
@@ -53,14 +57,37 @@ function showToast(message, type) {
   setTimeout(() => {
     toast.style.opacity = "0";
     toast.style.transform = "translateY(10px)";
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+    setTimeout(() => toast.remove(), 3500);
+  }, 3500);
 }
 
 // Escape HTML helper
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Helper to find subjects scheduled for a specific day
+function getScheduledSubjectsForDay(student, dayName) {
+  const rawSlots = RAW_WEEKLY_TIMETABLE[dayName] || [];
+  const subjectIds = new Set();
+
+  rawSlots.forEach(slot => {
+    if (!slot.isElective) {
+      if (slot.codeKey) {
+        const matched = student.subjects.find(s => s.code.replace(/\s+/g, '') === slot.codeKey);
+        if (matched) subjectIds.add(matched.id);
+      }
+    } else {
+      const matchingElectiveKey = student.electives.find(e => slot.slotGroup.includes(e));
+      if (matchingElectiveKey) {
+        const matched = student.subjects.find(s => s.code.replace(/\s+/g, '') === matchingElectiveKey);
+        if (matched) subjectIds.add(matched.id);
+      }
+    }
+  });
+
+  return Array.from(subjectIds);
 }
 
 // Core Render Method
@@ -192,16 +219,16 @@ function renderLoginScreen(container) {
 
           <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
-              <span style="color: var(--color-safe);">🚨</span>
-              <span>Real-Time 75% Per-Subject Shortage Alerts</span>
+              <span style="color: var(--color-safe);">🔒</span>
+              <span>Anti-Cheating Single Entry Lock Per Date</span>
             </div>
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
               <span style="color: var(--accent-primary);">📅</span>
-              <span>Calendar Date Selection for Past Attendance Marking</span>
+              <span>Today's Scheduled Classes Filter</span>
             </div>
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
-              <span style="color: #ec4899;">🎓</span>
-              <span>Credit Capacities (60 for 4-Cr, 45 for 3-Cr Courses)</span>
+              <span style="color: #ec4899;">☁️</span>
+              <span>Cross-Device Live Sync (Phone, Laptop & PC)</span>
             </div>
           </div>
         </div>
@@ -235,7 +262,7 @@ function renderLoginScreen(container) {
   `;
 }
 
-// Global Event Handlers attached to Window
+// Global Event Handlers
 window.handlePortalLogin = function(e) {
   e.preventDefault();
   const userInput = document.getElementById("portal-user-input").value;
@@ -269,6 +296,11 @@ window.switchTimetableDay = function(dayName) {
   renderApp();
 };
 
+window.setDashboardFilter = function(filterMode) {
+  dashboardViewFilter = filterMode;
+  renderApp();
+};
+
 window.toggleTheme = function() {
   isDarkMode = !isDarkMode;
   if (isDarkMode) {
@@ -281,7 +313,7 @@ window.toggleTheme = function() {
   renderApp();
 };
 
-// Global Warning Banner Renderer (STRICT PER-SUBJECT 75% THRESHOLD)
+// Global Warning Banner Renderer
 function renderGlobalWarningBanner(student, overall) {
   const dangerSubjects = student.subjects.filter(s => AttendanceMath.calculatePercentage(s.attended, s.total) < 75);
   const warningSubjects = student.subjects.filter(s => {
@@ -347,7 +379,7 @@ function renderTabContent(tab, student, overall, overallStatus) {
   return renderOverviewTab(student, overall, overallStatus);
 }
 
-// --- TAB 1: OVERVIEW & SUBJECT CARDS ---
+// --- TAB 1: OVERVIEW & SUBJECT CARDS (FILTERED BY TODAY'S SCHEDULE) ---
 function renderOverviewTab(student, overall, overallStatus) {
   let totalSafeSkips = 0;
   let totalClassesNeeded = 0;
@@ -364,6 +396,14 @@ function renderOverviewTab(student, overall, overallStatus) {
   let strokeColor = "var(--color-safe)";
   if (dangerCount > 0) strokeColor = "var(--color-danger)";
   else if (totalClassesNeeded > 0) strokeColor = "var(--color-warning)";
+
+  const currentDayName = getCurrentDayName();
+  const todayScheduledIds = getScheduledSubjectsForDay(student, currentDayName);
+
+  // Filter subject cards based on active toggle view
+  const displaySubjects = dashboardViewFilter === 'today' 
+    ? student.subjects.filter(s => todayScheduledIds.includes(s.id))
+    : student.subjects;
 
   return `
     <!-- Top Overview Metrics -->
@@ -393,7 +433,7 @@ function renderOverviewTab(student, overall, overallStatus) {
       <div class="metrics-row">
         <div class="glass-panel metric-card">
           <div class="metric-header">
-            <span>Total Classes Conducted</span>
+            <span>Total Semester Capacity</span>
             <div class="metric-icon">📚</div>
           </div>
           <div class="metric-value">${overall.total}</div>
@@ -420,14 +460,18 @@ function renderOverviewTab(student, overall, overallStatus) {
       </div>
     </div>
 
-    <!-- Enrolled Electives Info Pill -->
-    <div class="glass-panel" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--accent-primary);">
-      <div>
-        <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">YOUR ENROLLED ELECTIVE COURSES:</span>
-        <div style="font-weight: 700; font-size: 0.95rem; margin-top: 0.2rem;">
-          ${student.subjects.filter(s => s.type === 'Elective').map(e => `<span class="brand-badge" style="margin-right: 0.5rem; background: var(--accent-primary);">${e.code}</span> ${e.name}`).join(' &nbsp;|&nbsp; ')}
-        </div>
+    <!-- Filter Bar: Today's Scheduled Subjects vs All Enrolled -->
+    <div class="glass-panel" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <span style="font-weight: 700; font-size: 0.95rem;">Filter Display:</span>
+        <button class="btn-secondary ${dashboardViewFilter === 'today' ? 'active' : ''}" onclick="setDashboardFilter('today')" style="${dashboardViewFilter === 'today' ? 'background: var(--accent-primary); color: #fff; border-color: var(--accent-primary);' : ''}">
+          📅 Today's Scheduled Classes (${currentDayName} - ${todayScheduledIds.length})
+        </button>
+        <button class="btn-secondary ${dashboardViewFilter === 'all' ? 'active' : ''}" onclick="setDashboardFilter('all')" style="${dashboardViewFilter === 'all' ? 'background: var(--accent-primary); color: #fff; border-color: var(--accent-primary);' : ''}">
+          📚 All Enrolled Courses (${student.subjects.length})
+        </button>
       </div>
+
       <span style="font-size: 0.8rem; color: var(--text-muted);">Sec C (Sem V)</span>
     </div>
 
@@ -435,7 +479,7 @@ function renderOverviewTab(student, overall, overallStatus) {
     <div class="section-title-bar">
       <div class="section-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
-        Enrolled Courses & Labs (${student.subjects.length} Courses)
+        ${dashboardViewFilter === 'today' ? `Today's Scheduled Classes (${displaySubjects.length} Courses on ${currentDayName})` : `All Enrolled Courses (${displaySubjects.length} Courses)`}
       </div>
       <button class="btn-secondary" onclick="openAddSubjectModal()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -443,9 +487,16 @@ function renderOverviewTab(student, overall, overallStatus) {
       </button>
     </div>
 
-    <div class="subject-cards-grid">
-      ${student.subjects.map(s => renderSubjectCard(student.id, s)).join("")}
-    </div>
+    ${displaySubjects.length === 0 ? `
+      <div class="glass-panel" style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+        No scheduled classes for <strong>${currentDayName}</strong>. 
+        <br/>Click <strong>"All Enrolled Courses"</strong> above to view your full course list!
+      </div>
+    ` : `
+      <div class="subject-cards-grid">
+        ${displaySubjects.map(s => renderSubjectCard(student.id, s)).join("")}
+      </div>
+    `}
   `;
 }
 
@@ -458,6 +509,9 @@ function renderSubjectCard(studentId, subject) {
 
   const semTotal = subject.semesterTotal || (subject.credits === 4 ? 60 : (subject.credits === 3 ? 45 : 15));
   const maxSemBunks = AttendanceMath.calculateMaxSemesterBunks(semTotal, 75);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const isLockedToday = AttendanceStore.isSubjectLockedForDate(studentId, subject.id, todayStr);
 
   let progressColor = "var(--color-safe)";
   if (statusCat === "WARNING") progressColor = "var(--color-warning)";
@@ -488,10 +542,10 @@ function renderSubjectCard(studentId, subject) {
         </div>
         <div class="stat-item">
           <span class="stat-item-label">MISSED</span>
-          <span class="stat-item-val" style="color: var(--color-danger);">${subject.total - subject.attended}</span>
+          <span class="stat-item-val" style="color: var(--color-danger);">${subject.missed || 0}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-item-label">CONDUCTED</span>
+          <span class="stat-item-label">CAPACITY</span>
           <span class="stat-item-val">${subject.total} / ${semTotal}</span>
         </div>
       </div>
@@ -519,17 +573,24 @@ function renderSubjectCard(studentId, subject) {
         </div>
       `}
 
-      <!-- Action Buttons with Calendar Pop-up -->
-      <div class="subject-actions">
-        <button class="btn-present" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', true)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          + Present
-        </button>
-        <button class="btn-absent" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', false)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          + Absent
-        </button>
-      </div>
+      <!-- Action Buttons with Anti-Cheating Locking -->
+      ${isLockedToday ? `
+        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); padding: 0.6rem; border-radius: var(--radius-sm); text-align: center; font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.75rem;">
+          🔒 <strong>LOGGED FOR TODAY (${isLockedToday.status.toUpperCase()})</strong>
+          <br/>Subject is locked. To change it, use <strong>Undo</strong> in Leave History.
+        </div>
+      ` : `
+        <div class="subject-actions">
+          <button class="btn-present" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', true)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            + Present
+          </button>
+          <button class="btn-absent" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', false)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            + Absent
+          </button>
+        </div>
+      `}
     </div>
   `;
 }
@@ -557,7 +618,7 @@ function renderPredictorTab(student, overall) {
               <tr>
                 <th>Course</th>
                 <th>Credits</th>
-                <th>Conducted / Capacity</th>
+                <th>Attended / Capacity</th>
                 <th>Current %</th>
                 <th>Status</th>
                 <th>Safe Skips (Available)</th>
@@ -579,7 +640,7 @@ function renderPredictorTab(student, overall) {
                       <span class="brand-badge" style="background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-color);">${sub.credits} Credits</span>
                     </td>
                     <td style="font-family: var(--font-mono);">
-                      ${sub.total} / ${semTotal}
+                      ${sub.attended} / ${semTotal}
                     </td>
                     <td style="font-family: var(--font-mono); font-weight: 700; color: ${status === 'DANGER' ? 'var(--color-danger)' : status === 'WARNING' ? 'var(--color-warning)' : 'var(--color-safe)'}">
                       ${pct}%
@@ -623,7 +684,7 @@ function renderPredictorTab(student, overall) {
   `;
 }
 
-// --- TAB 3: PERSONALIZED TIMETABLE TRACKER ---
+// --- TAB 3: PERSONALIZED TIMETABLE TRACKER (CLEAN DISPLAY ONLY) ---
 function renderTimetableTab(student) {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const rawSlots = RAW_WEEKLY_TIMETABLE[activeTimetableDay] || [];
@@ -706,21 +767,13 @@ function renderTimetableTab(student) {
               <span>👨‍🏫 ${escapeHtml(slot.faculty)}</span>
             </div>
           </div>
-          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button class="btn-present" onclick="openMarkCalendarModal('${student.id}', '${slot.subjectId}', true, 'Marked from ${activeTimetableDay} Timetable')">
-              + Attended
-            </button>
-            <button class="btn-absent" onclick="openMarkCalendarModal('${student.id}', '${slot.subjectId}', false, 'Missed ${activeTimetableDay} lecture')">
-              + Missed
-            </button>
-          </div>
         </div>
       `).join("")}
     </div>
   `;
 }
 
-// --- TAB 4: HISTORY LOG ---
+// --- TAB 4: HISTORY LOG & UNDO ---
 function renderHistoryTab(student) {
   const history = student.history || [];
 
@@ -767,8 +820,8 @@ function renderHistoryTab(student) {
                     ${escapeHtml(log.note || '-')}
                   </td>
                   <td>
-                    <button onclick="handleUndoLog('${student.id}', '${log.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" title="Undo this attendance mark">
-                      ↩️ Undo
+                    <button onclick="handleUndoLog('${student.id}', '${log.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" title="Undo this attendance mark and unlock subject">
+                      ↩️ Undo & Unlock
                     </button>
                   </td>
                 </tr>
@@ -934,7 +987,14 @@ window.submitMarkCalendar = function(e, studentId, subjectId, isPresent) {
   const noteStr = document.getElementById("mark-note-input").value;
 
   const result = AttendanceStore.markAttendanceWithDate(studentId, subjectId, isPresent, dateStr, noteStr);
-  if (result) {
+  
+  if (result && result.isLocked) {
+    showToast(result.message, "danger");
+    closeModal();
+    return;
+  }
+
+  if (result && result.subject) {
     const subPct = AttendanceMath.calculatePercentage(result.subject.attended, result.subject.total);
     showToast(`Logged ${isPresent ? 'Present' : 'Absent'} for ${result.subject.code} on ${dateStr} (${subPct}%)`, isPresent ? "success" : "warning");
     closeModal();
@@ -944,7 +1004,7 @@ window.submitMarkCalendar = function(e, studentId, subjectId, isPresent) {
 
 window.handleUndoLog = function(studentId, logId) {
   if (AttendanceStore.undoLogEntry(studentId, logId)) {
-    showToast("Attendance entry reverted successfully.", "info");
+    showToast("Attendance entry reverted and subject unlocked!", "info");
     renderApp();
   }
 };
@@ -993,8 +1053,8 @@ window.runSimulation = function() {
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem; margin-bottom: 0.85rem;">
       <div>Current Percentage: <strong>${AttendanceMath.calculatePercentage(subject.attended, subject.total)}%</strong></div>
       <div>Predicted Percentage: <strong style="color: ${titleColor}; font-size: 1rem;">${sim.newPct}%</strong></div>
-      <div>New Total Conducted: <strong>${sim.newTotal} Classes</strong></div>
-      <div>Drop in Percentage: <strong style="color: var(--color-danger); font-family: var(--font-mono);">-${sim.dropAmount}%</strong></div>
+      <div>Capacity: <strong>${sim.newTotal} Classes</strong></div>
+      <div>Drop in Percentage: <strong style="color: var(--color-danger); font-family: var(--font-mono);">${sim.dropAmount > 0 ? '-' + sim.dropAmount + '%' : '0%'}</strong></div>
     </div>
 
     <div style="font-size: 0.85rem; line-height: 1.4; color: var(--text-primary); border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.65rem;">
