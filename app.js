@@ -12,9 +12,9 @@ let isDarkMode = true;
 
 // Initialize on DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
-  if (!localStorage.getItem("crescent_app_version_v9")) {
+  if (!localStorage.getItem("crescent_app_version_v10")) {
     localStorage.clear();
-    localStorage.setItem("crescent_app_version_v9", "v9");
+    localStorage.setItem("crescent_app_version_v10", "v10");
   }
 
   isDarkMode = localStorage.getItem("theme_mode") !== "light";
@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
   activeTimetableDay = getCurrentDayName();
   renderApp();
 
-  // Real-Time Cross-Device Sync (Phone <-> PC)
+  // Instant Cross-Device Cloud Sync (Phone <-> PC)
   AttendanceStore.fetchFromCloud(() => {
     renderApp();
   });
@@ -134,6 +134,11 @@ function renderApp() {
               </div>
             </div>
 
+            <!-- Cloud Sync Button -->
+            <button class="btn-secondary" onclick="handleManualSync()" title="Sync data live between Phone & PC" style="padding: 0.4rem 0.75rem; font-size: 0.78rem;">
+              ☁️ Sync Data
+            </button>
+
             <!-- Theme Toggle Button -->
             <button class="btn-icon" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Theme">
               ${isDarkMode ? `
@@ -144,8 +149,7 @@ function renderApp() {
             </button>
 
             <!-- Logout Button -->
-            <button class="btn-secondary" onclick="handleLogout()" style="color: #f87171; border-color: rgba(239,68,68,0.3);">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <button class="btn-secondary" onclick="handleLogout()" style="color: #f87171; border-color: rgba(239,68,68,0.3); padding: 0.4rem 0.75rem; font-size: 0.78rem;">
               Logout
             </button>
           </div>
@@ -220,7 +224,7 @@ function renderLoginScreen(container) {
           <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
               <span style="color: var(--color-safe);">🔒</span>
-              <span>Anti-Cheating Single Entry Lock Per Date</span>
+              <span>Anti-Cheating Subject Lock with Card Undo</span>
             </div>
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
               <span style="color: var(--accent-primary);">📅</span>
@@ -228,7 +232,7 @@ function renderLoginScreen(container) {
             </div>
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
               <span style="color: #ec4899;">☁️</span>
-              <span>Cross-Device Live Sync (Phone, Laptop & PC)</span>
+              <span>Instant Cross-Device Sync (Phone, Laptop & PC)</span>
             </div>
           </div>
         </div>
@@ -263,10 +267,13 @@ function renderLoginScreen(container) {
 }
 
 // Global Event Handlers
-window.handlePortalLogin = function(e) {
+window.handlePortalLogin = async function(e) {
   e.preventDefault();
   const userInput = document.getElementById("portal-user-input").value;
   const passInput = document.getElementById("portal-pass-input").value;
+
+  // Sync cloud before authenticating
+  await AttendanceStore.fetchFromCloud();
 
   const auth = AttendanceStore.authenticate(userInput, passInput);
   if (auth.success) {
@@ -281,6 +288,17 @@ window.handleLogout = function() {
   AttendanceStore.logout();
   showToast("Logged out successfully.", "info");
   renderApp();
+};
+
+window.handleManualSync = async function() {
+  showToast("Syncing data live across devices...", "info");
+  const synced = await AttendanceStore.fetchFromCloud();
+  if (synced) {
+    showToast("Data synced live with Cloud!", "success");
+    renderApp();
+  } else {
+    showToast("Already using latest data.", "info");
+  }
 };
 
 window.switchTab = function(tabName) {
@@ -379,7 +397,7 @@ function renderTabContent(tab, student, overall, overallStatus) {
   return renderOverviewTab(student, overall, overallStatus);
 }
 
-// --- TAB 1: OVERVIEW & SUBJECT CARDS (FILTERED BY TODAY'S SCHEDULE) ---
+// --- TAB 1: OVERVIEW & SUBJECT CARDS (WITH DIRECT CARD UNDO) ---
 function renderOverviewTab(student, overall, overallStatus) {
   let totalSafeSkips = 0;
   let totalClassesNeeded = 0;
@@ -400,7 +418,6 @@ function renderOverviewTab(student, overall, overallStatus) {
   const currentDayName = getCurrentDayName();
   const todayScheduledIds = getScheduledSubjectsForDay(student, currentDayName);
 
-  // Filter subject cards based on active toggle view
   const displaySubjects = dashboardViewFilter === 'today' 
     ? student.subjects.filter(s => todayScheduledIds.includes(s.id))
     : student.subjects;
@@ -462,7 +479,7 @@ function renderOverviewTab(student, overall, overallStatus) {
 
     <!-- Filter Bar: Today's Scheduled Subjects vs All Enrolled -->
     <div class="glass-panel" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-      <div style="display: flex; align-items: center; gap: 0.6rem;">
+      <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
         <span style="font-weight: 700; font-size: 0.95rem;">Filter Display:</span>
         <button class="btn-secondary ${dashboardViewFilter === 'today' ? 'active' : ''}" onclick="setDashboardFilter('today')" style="${dashboardViewFilter === 'today' ? 'background: var(--accent-primary); color: #fff; border-color: var(--accent-primary);' : ''}">
           📅 Today's Scheduled Classes (${currentDayName} - ${todayScheduledIds.length})
@@ -573,11 +590,15 @@ function renderSubjectCard(studentId, subject) {
         </div>
       `}
 
-      <!-- Action Buttons with Anti-Cheating Locking -->
+      <!-- Action Buttons with Direct Card Undo -->
       ${isLockedToday ? `
-        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); padding: 0.6rem; border-radius: var(--radius-sm); text-align: center; font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.75rem;">
-          🔒 <strong>LOGGED FOR TODAY (${isLockedToday.status.toUpperCase()})</strong>
-          <br/>Subject is locked. To change it, use <strong>Undo</strong> in Leave History.
+        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); margin-top: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+          <div style="font-size: 0.78rem;">
+            🔒 <strong>LOGGED (${isLockedToday.status.toUpperCase()})</strong>
+          </div>
+          <button class="btn-secondary" onclick="handleDirectCardUndo('${studentId}', '${subject.id}')" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; color: #f87171; border-color: rgba(239,68,68,0.4);">
+            ↩️ Undo & Re-mark
+          </button>
         </div>
       ` : `
         <div class="subject-actions">
@@ -684,7 +705,7 @@ function renderPredictorTab(student, overall) {
   `;
 }
 
-// --- TAB 3: PERSONALIZED TIMETABLE TRACKER (CLEAN DISPLAY ONLY) ---
+// --- TAB 3: PERSONALIZED TIMETABLE TRACKER ---
 function renderTimetableTab(student) {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const rawSlots = RAW_WEEKLY_TIMETABLE[activeTimetableDay] || [];
@@ -773,7 +794,7 @@ function renderTimetableTab(student) {
   `;
 }
 
-// --- TAB 4: HISTORY LOG & UNDO ---
+// --- TAB 4: HISTORY LOG ---
 function renderHistoryTab(student) {
   const history = student.history || [];
 
@@ -799,7 +820,6 @@ function renderHistoryTab(student) {
                 <th>Subject</th>
                 <th>Status</th>
                 <th>Note</th>
-                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -818,11 +838,6 @@ function renderHistoryTab(student) {
                   </td>
                   <td style="color: var(--text-secondary); font-size: 0.82rem;">
                     ${escapeHtml(log.note || '-')}
-                  </td>
-                  <td>
-                    <button onclick="handleUndoLog('${student.id}', '${log.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" title="Undo this attendance mark and unlock subject">
-                      ↩️ Undo & Unlock
-                    </button>
                   </td>
                 </tr>
               `).join("")}
@@ -1002,9 +1017,9 @@ window.submitMarkCalendar = function(e, studentId, subjectId, isPresent) {
   }
 };
 
-window.handleUndoLog = function(studentId, logId) {
-  if (AttendanceStore.undoLogEntry(studentId, logId)) {
-    showToast("Attendance entry reverted and subject unlocked!", "info");
+window.handleDirectCardUndo = function(studentId, subjectId) {
+  if (AttendanceStore.undoLatestSubjectMark(studentId, subjectId)) {
+    showToast("Logged entry reverted and subject unlocked!", "info");
     renderApp();
   }
 };
