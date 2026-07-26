@@ -367,15 +367,87 @@ class AttendanceStore {
     return { success: true, student };
   }
 
-  // Anti-Cheating Lock Check for Date
-  static isSubjectLockedForDate(studentId, subjectId, dateStr) {
+  // Get max allowed entries for a subject on a specific date based on official timetable
+  static getMaxEntriesForSubjectOnDate(studentId, subjectId, dateStr) {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
-    if (!student || !student.history) return false;
+    if (!student) return 1;
+
+    const subject = student.subjects.find(sub => sub.id === subjectId);
+    if (!subject) return 1;
 
     const targetDate = dateStr || new Date().toISOString().split("T")[0];
-    const existingLog = student.history.find(l => l.subjectId === subjectId && l.date === targetDate);
-    return existingLog || false;
+    const dateObj = new Date(targetDate + "T00:00:00");
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const dayName = days[dateObj.getDay()];
+
+    const codeClean = (subject.code || "").toUpperCase().replace(/\s+/g, "");
+
+    // Continuous 2-period lab / integrated courses as specified in official timetable:
+    // Monday: 09:00-10:40 AM (CSD 3152/55/56) & 02:30-04:10 PM (CSD 3159)
+    if (dayName === "Monday") {
+      if (codeClean.includes("CSD3152") || codeClean.includes("CSD3155") || codeClean.includes("CSD3156") || codeClean.includes("CSD3159")) {
+        return 2;
+      }
+    }
+
+    // Tuesday: 11:00 AM-12:40 PM (CSD 3152/55/56)
+    if (dayName === "Tuesday") {
+      if (codeClean.includes("CSD3152") || codeClean.includes("CSD3155") || codeClean.includes("CSD3156")) {
+        return 2;
+      }
+    }
+
+    // Wednesday: 09:00-10:40 AM (GED 3101)
+    if (dayName === "Wednesday") {
+      if (codeClean.includes("GED3101")) {
+        return 2;
+      }
+    }
+
+    // Friday: 02:30-04:10 PM (CSD 3152/55/56)
+    if (dayName === "Friday") {
+      if (codeClean.includes("CSD3152") || codeClean.includes("CSD3155") || codeClean.includes("CSD3156")) {
+        return 2;
+      }
+    }
+
+    return 1;
+  }
+
+  // Get subject history logs for a specific date
+  static getSubjectLogsForDate(studentId, subjectId, dateStr) {
+    const students = this.getStudents();
+    const student = students.find(s => s.id === studentId);
+    if (!student || !student.history) return [];
+
+    const targetDate = dateStr || new Date().toISOString().split("T")[0];
+    return student.history.filter(l => l.subjectId === subjectId && l.date === targetDate);
+  }
+
+  // Anti-Cheating Lock Check for Date (Supports 1-period and 2-period continuous subjects)
+  static isSubjectLockedForDate(studentId, subjectId, dateStr) {
+    const targetDate = dateStr || new Date().toISOString().split("T")[0];
+    const maxAllowed = this.getMaxEntriesForSubjectOnDate(studentId, subjectId, targetDate);
+    const existingLogs = this.getSubjectLogsForDate(studentId, subjectId, targetDate);
+
+    if (existingLogs.length >= maxAllowed) {
+      return {
+        isLocked: true,
+        count: existingLogs.length,
+        maxAllowed,
+        latestLog: existingLogs[0],
+        status: existingLogs[0]?.status || "logged"
+      };
+    }
+
+    return {
+      isLocked: false,
+      count: existingLogs.length,
+      maxAllowed,
+      latestLog: existingLogs[0] || null,
+      status: null
+    };
   }
 
   // Attendance Marking (Guarantees local timestamp update & awaits cloud sync PUT completion)
@@ -386,12 +458,11 @@ class AttendanceStore {
 
     const markDate = selectedDateStr || new Date().toISOString().split("T")[0];
 
-    // Anti-Cheating Lock Check
-    const existingLog = student.history ? student.history.find(l => l.subjectId === subjectId && l.date === markDate) : null;
-    if (existingLog) {
+    const lockStatus = this.isSubjectLockedForDate(studentId, subjectId, markDate);
+    if (lockStatus.isLocked) {
       return {
         isLocked: true,
-        message: `Attendance for this subject on ${markDate} has already been logged (${existingLog.status.toUpperCase()}). Click "Undo & Re-mark" directly on the subject card to change it.`
+        message: `Maximum allowed entries (${lockStatus.maxAllowed}/${lockStatus.maxAllowed}) for this subject on ${markDate} have already been logged. Click "Undo & Re-mark" directly on the subject card to change it.`
       };
     }
 
@@ -410,6 +481,9 @@ class AttendanceStore {
     const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     if (!student.history) student.history = [];
+    const entryNumber = lockStatus.count + 1;
+    const periodLabel = lockStatus.maxAllowed > 1 ? ` (Period ${entryNumber}/${lockStatus.maxAllowed})` : '';
+
     const newLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       date: markDate,
@@ -418,13 +492,13 @@ class AttendanceStore {
       subjectCode: subject.code,
       subjectName: subject.name,
       status: isPresent ? "present" : "absent",
-      note: note || (isPresent ? "Attended Class / Confirmed" : "Marked Absence / Leave")
+      note: note || (isPresent ? `Attended Class${periodLabel} / Confirmed` : `Marked Absence${periodLabel} / Leave`)
     };
     student.history.unshift(newLog);
     student.lastUpdated = Date.now(); // Update timestamp to prevent stale cloud overwrites!
 
     await this.saveStudents(students);
-    return { student, subject, newLog, isLocked: false };
+    return { student, subject, newLog, isLocked: false, entryNumber, maxAllowed: lockStatus.maxAllowed };
   }
 
   // Direct Card Undo: Reverts the logged mark directly on the Subject Card & unlocks it!
