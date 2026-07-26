@@ -453,6 +453,31 @@ class AttendanceStore {
     return true;
   }
 
+  static async undoLogEntry(studentId, logId) {
+    const students = this.getStudents();
+    const student = students.find(s => s.id === studentId);
+    if (!student || !student.history) return false;
+
+    const logIndex = student.history.findIndex(l => l.id === logId);
+    if (logIndex === -1) return false;
+
+    const log = student.history[logIndex];
+    const subject = student.subjects.find(sub => sub.id === log.subjectId);
+    
+    if (subject) {
+      if (log.status === "absent" && subject.missed > 0) {
+        subject.missed -= 1;
+        subject.attended = Math.min(subject.total, subject.total - subject.missed);
+      }
+    }
+
+    student.history.splice(logIndex, 1);
+    student.lastUpdated = Date.now();
+
+    await this.saveStudents(students);
+    return true;
+  }
+
   static async addSubject(studentId, newSubjectData) {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
