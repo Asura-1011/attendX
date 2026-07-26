@@ -1,6 +1,6 @@
 /**
  * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
- * Core Data & Storage Handler with Firebase Cloud Sync & Direct Subject Card Undo
+ * Core Data Handler with Live Cloud Database Integration (JSONBlob REST Database)
  */
 
 // All Available Courses in Curriculum with Credit Capacities:
@@ -180,13 +180,13 @@ const RAW_WEEKLY_TIMETABLE = {
   ]
 };
 
-// Storage & Bulletproof Cross-Device Firebase REST Sync Manager
+// Storage & Bulletproof Cross-Device Live Cloud Database Manager
 class AttendanceStore {
-  static STORAGE_KEY = "crescent_student_accounts_v10";
-  static ACTIVE_USER_KEY = "crescent_active_session_v10";
+  static STORAGE_KEY = "crescent_student_accounts_v11";
+  static ACTIVE_USER_KEY = "crescent_active_session_v11";
   
-  // Real-Time Firebase REST Database Endpoint for Instant Phone <-> Laptop Cloud Sync
-  static FIREBASE_URL = "https://crescent-attendx-default-rtdb.firebaseio.com/students_v10.json";
+  // Public Persistent Cloud REST Database Endpoint (Shared across all devices: Phone, PC, Laptop, Tablet)
+  static CLOUD_DB_URL = "https://jsonblob.com/api/jsonBlob/019f9f49-49aa-7fac-b6b8-455c728193f7";
 
   static init() {
     let raw = localStorage.getItem(this.STORAGE_KEY);
@@ -214,8 +214,8 @@ class AttendanceStore {
           history: []
         };
       });
+      // Save locally as temporary fallback only; NEVER push default data to cloud from init!
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-      this.syncToCloud(data);
     }
   }
 
@@ -243,12 +243,15 @@ class AttendanceStore {
     }
   }
 
-  // Cross-Device Cloud Sync (Phone <-> Laptop <-> PC) via Firebase REST API
+  // Cross-Device Real-Time Cloud Synchronization
   static async syncToCloud(data) {
     try {
-      await fetch(this.FIREBASE_URL, {
+      await fetch(this.CLOUD_DB_URL, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify(data)
       });
     } catch (e) {}
@@ -256,10 +259,20 @@ class AttendanceStore {
 
   static async fetchFromCloud(onSyncCallback) {
     try {
-      const res = await fetch(this.FIREBASE_URL);
+      const res = await fetch(this.CLOUD_DB_URL, {
+        headers: { "Accept": "application/json" }
+      });
+
       if (res.ok) {
         const cloudData = await res.json();
         if (Array.isArray(cloudData) && cloudData.length > 0) {
+          // Verify subjects exist for each student
+          cloudData.forEach(s => {
+            if (!s.subjects || s.subjects.length === 0) {
+              s.subjects = buildStudentSubjects(s.electives);
+            }
+          });
+
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cloudData));
           if (onSyncCallback) onSyncCallback(cloudData);
           return true;
@@ -326,8 +339,11 @@ class AttendanceStore {
     return existingLog || false;
   }
 
-  // Attendance Marking
-  static markAttendanceWithDate(studentId, subjectId, isPresent, selectedDateStr, note = "") {
+  // Attendance Marking (Fetches latest cloud state first to prevent overwriting parallel changes)
+  static async markAttendanceWithDate(studentId, subjectId, isPresent, selectedDateStr, note = "") {
+    // Pull latest cloud DB first
+    await this.fetchFromCloud();
+
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return null;
@@ -375,7 +391,9 @@ class AttendanceStore {
   }
 
   // Direct Card Undo: Reverts the logged mark directly on the Subject Card & unlocks it!
-  static undoLatestSubjectMark(studentId, subjectId) {
+  static async undoLatestSubjectMark(studentId, subjectId) {
+    await this.fetchFromCloud();
+
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student || !student.history) return false;
@@ -398,30 +416,9 @@ class AttendanceStore {
     return true;
   }
 
-  static undoLogEntry(studentId, logId) {
-    const students = this.getStudents();
-    const student = students.find(s => s.id === studentId);
-    if (!student || !student.history) return false;
+  static async addSubject(studentId, newSubjectData) {
+    await this.fetchFromCloud();
 
-    const logIndex = student.history.findIndex(l => l.id === logId);
-    if (logIndex === -1) return false;
-
-    const log = student.history[logIndex];
-    const subject = student.subjects.find(sub => sub.id === log.subjectId);
-    
-    if (subject) {
-      if (log.status === "absent" && subject.missed > 0) {
-        subject.missed -= 1;
-        subject.attended = Math.min(subject.total, subject.total - subject.missed);
-      }
-    }
-
-    student.history.splice(logIndex, 1);
-    this.saveStudents(students);
-    return true;
-  }
-
-  static addSubject(studentId, newSubjectData) {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return false;
@@ -448,7 +445,9 @@ class AttendanceStore {
     return newSub;
   }
 
-  static deleteSubject(studentId, subjectId) {
+  static async deleteSubject(studentId, subjectId) {
+    await this.fetchFromCloud();
+
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return false;
