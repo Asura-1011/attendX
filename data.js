@@ -1,6 +1,6 @@
 /**
  * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
- * Core Data Handler with Live Cloud Database Integration (JSONBlob REST Database)
+ * Core Data Handler with Smart Timestamped Cloud Database Integration
  */
 
 // All Available Courses in Curriculum with Credit Capacities:
@@ -35,7 +35,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "SM",
     accentColor: "#3b82f6",
-    electives: ["CSDX502", "CSDX513"]
+    electives: ["CSDX502", "CSDX513"],
+    lastUpdated: Date.now()
   },
   {
     id: "std-1182",
@@ -47,7 +48,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "SI",
     accentColor: "#10b981",
-    electives: ["CSDX502", "CSDX513"]
+    electives: ["CSDX502", "CSDX513"],
+    lastUpdated: Date.now()
   },
   {
     id: "std-1178",
@@ -59,7 +61,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "SH",
     accentColor: "#8b5cf6",
-    electives: ["CSDX502", "CSDX513"]
+    electives: ["CSDX502", "CSDX513"],
+    lastUpdated: Date.now()
   },
   {
     id: "std-1190",
@@ -71,7 +74,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "MN",
     accentColor: "#06b6d4",
-    electives: ["CSDX502", "CSDX513"]
+    electives: ["CSDX502", "CSDX513"],
+    lastUpdated: Date.now()
   },
   {
     id: "std-1189",
@@ -83,7 +87,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "MF",
     accentColor: "#ec4899",
-    electives: ["CSDX501", "CSDX503"]
+    electives: ["CSDX501", "CSDX503"],
+    lastUpdated: Date.now()
   },
   {
     id: "std-1164",
@@ -95,7 +100,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "OA",
     accentColor: "#f59e0b",
-    electives: ["CSDX509", "CSDX501"]
+    electives: ["CSDX509", "CSDX501"],
+    lastUpdated: Date.now()
   },
   {
     id: "std-1180",
@@ -107,7 +113,8 @@ const INITIAL_STUDENTS = [
     semester: "Semester V (Sec C)",
     avatar: "SB",
     accentColor: "#ef4444",
-    electives: ["CSDX513", "CSDX509"]
+    electives: ["CSDX513", "CSDX509"],
+    lastUpdated: Date.now()
   }
 ];
 
@@ -182,8 +189,8 @@ const RAW_WEEKLY_TIMETABLE = {
 
 // Storage & Bulletproof Cross-Device Live Cloud Database Manager
 class AttendanceStore {
-  static STORAGE_KEY = "crescent_student_accounts_v12";
-  static ACTIVE_USER_KEY = "crescent_active_session_v12";
+  static STORAGE_KEY = "crescent_student_accounts_v13";
+  static ACTIVE_USER_KEY = "crescent_active_session_v13";
   
   // Public Persistent Cloud REST Database Endpoint (Shared across all devices: Phone, PC, Laptop, Tablet)
   static CLOUD_DB_URL = "https://jsonblob.com/api/jsonBlob/019f9f49-49aa-7fac-b6b8-455c728193f7";
@@ -212,10 +219,10 @@ class AttendanceStore {
         return {
           ...s,
           subjects,
-          history: []
+          history: [],
+          lastUpdated: Date.now()
         };
       });
-      // Save locally as temporary fallback only; NEVER push default data to cloud from init!
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
     }
   }
@@ -233,14 +240,15 @@ class AttendanceStore {
     return INITIAL_STUDENTS.map(s => ({
       ...s,
       subjects: buildStudentSubjects(s.electives),
-      history: []
+      history: [],
+      lastUpdated: Date.now()
     }));
   }
 
-  static saveStudents(students) {
+  static async saveStudents(students) {
     if (Array.isArray(students)) {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(students));
-      this.syncToCloud(students);
+      await this.syncToCloud(students);
     }
   }
 
@@ -261,6 +269,28 @@ class AttendanceStore {
     }
   }
 
+  // Smart Timestamped Merge: Prevents stale cloud downloads from reverting newer local edits
+  static mergeStudentData(localStudents, cloudStudents) {
+    if (!Array.isArray(cloudStudents) || cloudStudents.length === 0) return localStudents;
+    if (!Array.isArray(localStudents) || localStudents.length === 0) return cloudStudents;
+
+    return cloudStudents.map(cloudStudent => {
+      const localStudent = localStudents.find(ls => ls.id === cloudStudent.id || ls.rrn === cloudStudent.rrn);
+      if (!localStudent) return cloudStudent;
+
+      const localTime = localStudent.lastUpdated || 0;
+      const cloudTime = cloudStudent.lastUpdated || 0;
+      const localHistoryLen = (localStudent.history || []).length;
+      const cloudHistoryLen = (cloudStudent.history || []).length;
+
+      // If local data is newer or has more entries, keep local edits!
+      if (localTime > cloudTime || (localTime === cloudTime && localHistoryLen > cloudHistoryLen)) {
+        return localStudent;
+      }
+      return cloudStudent;
+    });
+  }
+
   static async fetchFromCloud(onSyncCallback) {
     try {
       const res = await fetch(this.CLOUD_DB_URL, {
@@ -270,16 +300,18 @@ class AttendanceStore {
       if (res.ok) {
         const cloudData = await res.json();
         if (Array.isArray(cloudData) && cloudData.length > 0) {
-          // Verify subjects exist for each student
           cloudData.forEach(s => {
             if (!s.subjects || s.subjects.length === 0) {
               s.subjects = buildStudentSubjects(s.electives);
             }
           });
 
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cloudData));
+          const localData = this.getStudents();
+          const mergedData = this.mergeStudentData(localData, cloudData);
+
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(mergedData));
           this.isLastSyncSuccess = true;
-          if (onSyncCallback) onSyncCallback(cloudData);
+          if (onSyncCallback) onSyncCallback(mergedData);
           return true;
         }
       }
@@ -346,11 +378,8 @@ class AttendanceStore {
     return existingLog || false;
   }
 
-  // Attendance Marking (Fetches latest cloud state first to prevent overwriting parallel changes)
+  // Attendance Marking (Guarantees local timestamp update & awaits cloud sync PUT completion)
   static async markAttendanceWithDate(studentId, subjectId, isPresent, selectedDateStr, note = "") {
-    // Pull latest cloud DB first
-    await this.fetchFromCloud();
-
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return null;
@@ -392,15 +421,14 @@ class AttendanceStore {
       note: note || (isPresent ? "Attended Class / Confirmed" : "Marked Absence / Leave")
     };
     student.history.unshift(newLog);
+    student.lastUpdated = Date.now(); // Update timestamp to prevent stale cloud overwrites!
 
-    this.saveStudents(students);
+    await this.saveStudents(students);
     return { student, subject, newLog, isLocked: false };
   }
 
   // Direct Card Undo: Reverts the logged mark directly on the Subject Card & unlocks it!
   static async undoLatestSubjectMark(studentId, subjectId) {
-    await this.fetchFromCloud();
-
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student || !student.history) return false;
@@ -419,13 +447,13 @@ class AttendanceStore {
     }
 
     student.history.splice(logIndex, 1);
-    this.saveStudents(students);
+    student.lastUpdated = Date.now(); // Update timestamp!
+
+    await this.saveStudents(students);
     return true;
   }
 
   static async addSubject(studentId, newSubjectData) {
-    await this.fetchFromCloud();
-
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return false;
@@ -448,19 +476,21 @@ class AttendanceStore {
     };
 
     student.subjects.push(newSub);
-    this.saveStudents(students);
+    student.lastUpdated = Date.now();
+
+    await this.saveStudents(students);
     return newSub;
   }
 
   static async deleteSubject(studentId, subjectId) {
-    await this.fetchFromCloud();
-
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
     if (!student) return false;
 
     student.subjects = student.subjects.filter(s => s.id !== subjectId);
-    this.saveStudents(students);
+    student.lastUpdated = Date.now();
+
+    await this.saveStudents(students);
     return true;
   }
 }
