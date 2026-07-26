@@ -12,9 +12,9 @@ let isDarkMode = true;
 
 // Initialize on DOM Ready
 document.addEventListener("DOMContentLoaded", async () => {
-  if (!localStorage.getItem("crescent_app_version_v12")) {
+  if (!localStorage.getItem("crescent_app_version_v13")) {
     localStorage.clear();
-    localStorage.setItem("crescent_app_version_v12", "v12");
+    localStorage.setItem("crescent_app_version_v13", "v13");
   }
 
   isDarkMode = localStorage.getItem("theme_mode") !== "light";
