@@ -557,7 +557,7 @@ function renderSubjectCard(studentId, subject) {
   const maxSemBunks = AttendanceMath.calculateMaxSemesterBunks(semTotal, 75);
 
   const todayStr = new Date().toISOString().split("T")[0];
-  const isLockedToday = AttendanceStore.isSubjectLockedForDate(studentId, subject.id, todayStr);
+  const lockInfo = AttendanceStore.isSubjectLockedForDate(studentId, subject.id, todayStr);
 
   let progressColor = "var(--color-safe)";
   if (statusCat === "WARNING") progressColor = "var(--color-warning)";
@@ -572,6 +572,11 @@ function renderSubjectCard(studentId, subject) {
             <span style="font-size: 0.7rem; font-weight: 700; color: var(--accent-primary); background: rgba(59,130,246,0.15); padding: 0.1rem 0.45rem; border-radius: 4px;">
               ${subject.credits || 3} Credits (Max ${semTotal} Classes)
             </span>
+            ${lockInfo.maxAllowed === 2 ? `
+              <span style="font-size: 0.68rem; font-weight: 700; color: #f59e0b; background: rgba(245,158,11,0.15); padding: 0.1rem 0.45rem; border-radius: 4px;">
+                ⏱️ Double Period (2 Classes Today)
+              </span>
+            ` : ''}
           </div>
           <div class="subject-name">${escapeHtml(subject.name)}</div>
           <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem;">👨‍🏫 ${escapeHtml(subject.faculty || 'Faculty')}</div>
@@ -619,25 +624,44 @@ function renderSubjectCard(studentId, subject) {
         </div>
       `}
 
-      <!-- Action Buttons with Direct Card Undo -->
-      ${isLockedToday ? `
+      <!-- Action Buttons Supporting 1-Period and 2-Period Continuous Classes -->
+      ${lockInfo.isLocked ? `
         <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); margin-top: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
           <div style="font-size: 0.78rem;">
-            🔒 <strong>LOGGED (${isLockedToday.status.toUpperCase()})</strong>
+            🔒 <strong>LOGGED TODAY (${lockInfo.count}/${lockInfo.maxAllowed} PERIODS)</strong>
           </div>
           <button class="btn-secondary" onclick="handleDirectCardUndo('${studentId}', '${subject.id}')" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; color: #f87171; border-color: rgba(239,68,68,0.4);">
             ↩️ Undo & Re-mark
           </button>
         </div>
+      ` : lockInfo.count === 1 && lockInfo.maxAllowed === 2 ? `
+        <div style="margin-top: 0.75rem;">
+          <div style="background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.35); padding: 0.45rem 0.75rem; border-radius: var(--radius-sm); margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem;">
+            <span>⏱️ <strong>Period 1 Logged (1/2)</strong> - Log Period 2:</span>
+            <button class="btn-secondary" onclick="handleDirectCardUndo('${studentId}', '${subject.id}')" style="font-size: 0.7rem; padding: 0.2rem 0.5rem; color: #f87171; border-color: rgba(239,68,68,0.4);">
+              ↩️ Undo 1st Period
+            </button>
+          </div>
+          <div class="subject-actions">
+            <button class="btn-present" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', true)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              + Present (Period 2)
+            </button>
+            <button class="btn-absent" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', false)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              + Absent (Period 2)
+            </button>
+          </div>
+        </div>
       ` : `
         <div class="subject-actions">
           <button class="btn-present" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', true)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            + Present
+            + Present ${lockInfo.maxAllowed === 2 ? '(Period 1)' : ''}
           </button>
           <button class="btn-absent" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', false)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            + Absent
+            + Absent ${lockInfo.maxAllowed === 2 ? '(Period 1)' : ''}
           </button>
         </div>
       `}
