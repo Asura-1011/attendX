@@ -11,10 +11,10 @@ let dashboardViewFilter = "today"; // 'today' or 'all'
 let isDarkMode = true;
 
 // Initialize on DOM Ready
-document.addEventListener("DOMContentLoaded", () => {
-  if (!localStorage.getItem("crescent_app_version_v10")) {
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!localStorage.getItem("crescent_app_version_v11")) {
     localStorage.clear();
-    localStorage.setItem("crescent_app_version_v10", "v10");
+    localStorage.setItem("crescent_app_version_v11", "v11");
   }
 
   isDarkMode = localStorage.getItem("theme_mode") !== "light";
@@ -23,12 +23,20 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   activeTimetableDay = getCurrentDayName();
+
+  // Fetch latest state from cloud BEFORE initial render
+  await AttendanceStore.fetchFromCloud();
   renderApp();
 
-  // Instant Cross-Device Cloud Sync (Phone <-> PC)
-  AttendanceStore.fetchFromCloud(() => {
-    renderApp();
+  // Auto-sync when tab becomes active / focused (e.g. switching between Phone and Laptop)
+  window.addEventListener("focus", () => {
+    AttendanceStore.fetchFromCloud(() => renderApp());
   });
+
+  // Background auto-refresh timer (every 4 seconds) to keep devices 100% in sync
+  setInterval(() => {
+    AttendanceStore.fetchFromCloud(() => renderApp());
+  }, 4000);
 });
 
 // Helper to get current day name
@@ -134,7 +142,7 @@ function renderApp() {
               </div>
             </div>
 
-            <!-- Cloud Sync Button -->
+            <!-- Live Cloud Sync Button -->
             <button class="btn-secondary" onclick="handleManualSync()" title="Sync data live between Phone & PC" style="padding: 0.4rem 0.75rem; font-size: 0.78rem;">
               ☁️ Sync Data
             </button>
@@ -232,7 +240,7 @@ function renderLoginScreen(container) {
             </div>
             <div style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;">
               <span style="color: #ec4899;">☁️</span>
-              <span>Instant Cross-Device Sync (Phone, Laptop & PC)</span>
+              <span>Live Cloud REST DB Sync (Phone, Laptop & PC)</span>
             </div>
           </div>
         </div>
@@ -272,7 +280,7 @@ window.handlePortalLogin = async function(e) {
   const userInput = document.getElementById("portal-user-input").value;
   const passInput = document.getElementById("portal-pass-input").value;
 
-  // Sync cloud before authenticating
+  showToast("Syncing with live cloud database...", "info");
   await AttendanceStore.fetchFromCloud();
 
   const auth = AttendanceStore.authenticate(userInput, passInput);
@@ -291,13 +299,13 @@ window.handleLogout = function() {
 };
 
 window.handleManualSync = async function() {
-  showToast("Syncing data live across devices...", "info");
+  showToast("Syncing live with cloud database...", "info");
   const synced = await AttendanceStore.fetchFromCloud();
   if (synced) {
-    showToast("Data synced live with Cloud!", "success");
+    showToast("Synced live with Cloud Database!", "success");
     renderApp();
   } else {
-    showToast("Already using latest data.", "info");
+    showToast("Already using latest live data.", "info");
   }
 };
 
@@ -397,7 +405,7 @@ function renderTabContent(tab, student, overall, overallStatus) {
   return renderOverviewTab(student, overall, overallStatus);
 }
 
-// --- TAB 1: OVERVIEW & SUBJECT CARDS (WITH DIRECT CARD UNDO) ---
+// --- TAB 1: OVERVIEW & SUBJECT CARDS ---
 function renderOverviewTab(student, overall, overallStatus) {
   let totalSafeSkips = 0;
   let totalClassesNeeded = 0;
@@ -996,12 +1004,12 @@ window.setPickerDate = function(dateStr) {
   if (picker) picker.value = dateStr;
 };
 
-window.submitMarkCalendar = function(e, studentId, subjectId, isPresent) {
+window.submitMarkCalendar = async function(e, studentId, subjectId, isPresent) {
   e.preventDefault();
   const dateStr = document.getElementById("mark-date-picker").value;
   const noteStr = document.getElementById("mark-note-input").value;
 
-  const result = AttendanceStore.markAttendanceWithDate(studentId, subjectId, isPresent, dateStr, noteStr);
+  const result = await AttendanceStore.markAttendanceWithDate(studentId, subjectId, isPresent, dateStr, noteStr);
   
   if (result && result.isLocked) {
     showToast(result.message, "danger");
@@ -1017,8 +1025,8 @@ window.submitMarkCalendar = function(e, studentId, subjectId, isPresent) {
   }
 };
 
-window.handleDirectCardUndo = function(studentId, subjectId) {
-  if (AttendanceStore.undoLatestSubjectMark(studentId, subjectId)) {
+window.handleDirectCardUndo = async function(studentId, subjectId) {
+  if (await AttendanceStore.undoLatestSubjectMark(studentId, subjectId)) {
     showToast("Logged entry reverted and subject unlocked!", "info");
     renderApp();
   }
@@ -1130,7 +1138,7 @@ window.openAddSubjectModal = function() {
   `;
 };
 
-window.handleCreateSubject = function(e) {
+window.handleCreateSubject = async function(e) {
   e.preventDefault();
   const code = document.getElementById("new-code").value;
   const name = document.getElementById("new-name").value;
@@ -1139,7 +1147,7 @@ window.handleCreateSubject = function(e) {
 
   if (!currentStudent) return;
 
-  const created = AttendanceStore.addSubject(currentStudent.id, { code, name, credits, minPercentage, attended: 0, total: 0 });
+  const created = await AttendanceStore.addSubject(currentStudent.id, { code, name, credits, minPercentage, attended: 0, total: 0 });
   if (created) {
     showToast(`Subject ${name} added!`, "success");
     closeModal();
@@ -1147,9 +1155,9 @@ window.handleCreateSubject = function(e) {
   }
 };
 
-window.confirmDeleteSubject = function(subjectId, name) {
+window.confirmDeleteSubject = async function(subjectId, name) {
   if (confirm(`Are you sure you want to remove ${name}?`)) {
-    if (currentStudent && AttendanceStore.deleteSubject(currentStudent.id, subjectId)) {
+    if (currentStudent && await AttendanceStore.deleteSubject(currentStudent.id, subjectId)) {
       showToast(`Removed ${name}`, "info");
       renderApp();
     }
