@@ -12,9 +12,9 @@ let isDarkMode = true;
 
 // Initialize on DOM Ready
 document.addEventListener("DOMContentLoaded", async () => {
-  if (!localStorage.getItem("crescent_app_version_v11")) {
+  if (!localStorage.getItem("crescent_app_version_v12")) {
     localStorage.clear();
-    localStorage.setItem("crescent_app_version_v11", "v11");
+    localStorage.setItem("crescent_app_version_v12", "v12");
   }
 
   isDarkMode = localStorage.getItem("theme_mode") !== "light";
@@ -29,15 +29,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderApp();
 
   // Auto-sync when tab becomes active / focused (e.g. switching between Phone and Laptop)
-  window.addEventListener("focus", () => {
-    AttendanceStore.fetchFromCloud(() => renderApp());
+  window.addEventListener("focus", async () => {
+    if (currentStudent && !isUserTypingOrInModal()) {
+      await AttendanceStore.fetchFromCloud();
+      renderApp();
+    }
   });
 
-  // Background auto-refresh timer (every 4 seconds) to keep devices 100% in sync
-  setInterval(() => {
-    AttendanceStore.fetchFromCloud(() => renderApp());
-  }, 4000);
+  // Background auto-refresh timer (every 5 seconds) ONLY if user is logged in & not typing
+  setInterval(async () => {
+    if (currentStudent && !isUserTypingOrInModal()) {
+      await AttendanceStore.fetchFromCloud();
+      renderApp();
+    }
+  }, 5000);
 });
+
+// Check if user is actively typing in a form or interacting with a modal
+function isUserTypingOrInModal() {
+  const activeEl = document.activeElement;
+  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
+    return true;
+  }
+  const modalContainer = document.getElementById('modal-container');
+  if (modalContainer && modalContainer.children.length > 0) {
+    return true;
+  }
+  return false;
+}
 
 // Helper to get current day name
 function getCurrentDayName() {
@@ -105,9 +124,11 @@ function renderApp() {
   const appRoot = document.getElementById("app-root");
   if (!appRoot) return;
 
-  // IF NOT LOGGED IN -> RENDER FULL PAGE LOGIN SCREEN
+  // IF NOT LOGGED IN -> RENDER FULL PAGE LOGIN SCREEN (ONLY ONCE, NEVER OVERWRITE WHILE TYPING)
   if (!currentStudent) {
-    renderLoginScreen(appRoot);
+    if (!document.getElementById("portal-user-input")) {
+      renderLoginScreen(appRoot);
+    }
     return;
   }
 
@@ -255,12 +276,12 @@ function renderLoginScreen(container) {
           <form onsubmit="handlePortalLogin(event)">
             <div class="form-group">
               <label class="form-label">RRN Number or Educational Email</label>
-              <input type="text" id="portal-user-input" required placeholder="Enter RRN or Email" class="form-control" style="padding: 0.8rem 1rem;" />
+              <input type="text" id="portal-user-input" required placeholder="Enter RRN or Email" class="form-control" style="padding: 0.8rem 1rem;" autocomplete="username" />
             </div>
 
             <div class="form-group">
               <label class="form-label">Password</label>
-              <input type="password" id="portal-pass-input" required placeholder="Enter Password" class="form-control" style="padding: 0.8rem 1rem;" />
+              <input type="password" id="portal-pass-input" required placeholder="Enter Password" class="form-control" style="padding: 0.8rem 1rem;" autocomplete="current-password" />
             </div>
 
             <button type="submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 0.85rem; font-size: 1rem; margin-top: 1.25rem;">
