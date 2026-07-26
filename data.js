@@ -182,11 +182,12 @@ const RAW_WEEKLY_TIMETABLE = {
 
 // Storage & Bulletproof Cross-Device Live Cloud Database Manager
 class AttendanceStore {
-  static STORAGE_KEY = "crescent_student_accounts_v11";
-  static ACTIVE_USER_KEY = "crescent_active_session_v11";
+  static STORAGE_KEY = "crescent_student_accounts_v12";
+  static ACTIVE_USER_KEY = "crescent_active_session_v12";
   
   // Public Persistent Cloud REST Database Endpoint (Shared across all devices: Phone, PC, Laptop, Tablet)
   static CLOUD_DB_URL = "https://jsonblob.com/api/jsonBlob/019f9f49-49aa-7fac-b6b8-455c728193f7";
+  static isLastSyncSuccess = true;
 
   static init() {
     let raw = localStorage.getItem(this.STORAGE_KEY);
@@ -246,7 +247,7 @@ class AttendanceStore {
   // Cross-Device Real-Time Cloud Synchronization
   static async syncToCloud(data) {
     try {
-      await fetch(this.CLOUD_DB_URL, {
+      const res = await fetch(this.CLOUD_DB_URL, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -254,7 +255,10 @@ class AttendanceStore {
         },
         body: JSON.stringify(data)
       });
-    } catch (e) {}
+      this.isLastSyncSuccess = res.ok;
+    } catch (e) {
+      this.isLastSyncSuccess = false;
+    }
   }
 
   static async fetchFromCloud(onSyncCallback) {
@@ -274,11 +278,14 @@ class AttendanceStore {
           });
 
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cloudData));
+          this.isLastSyncSuccess = true;
           if (onSyncCallback) onSyncCallback(cloudData);
           return true;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      this.isLastSyncSuccess = false;
+    }
     return false;
   }
 
