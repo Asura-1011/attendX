@@ -849,6 +849,7 @@ function renderHistoryTab(student) {
                 <th>Subject</th>
                 <th>Status</th>
                 <th>Note</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -867,6 +868,11 @@ function renderHistoryTab(student) {
                   </td>
                   <td style="color: var(--text-secondary); font-size: 0.82rem;">
                     ${escapeHtml(log.note || '-')}
+                  </td>
+                  <td>
+                    <button class="btn-secondary" onclick="handleHistoryLogUndo('${student.id}', '${log.id}')" style="font-size: 0.75rem; padding: 0.3rem 0.65rem; color: #f87171; border-color: rgba(239,68,68,0.4);">
+                      ↩️ Undo & Delete
+                    </button>
                   </td>
                 </tr>
               `).join("")}
@@ -1050,6 +1056,15 @@ window.handleDirectCardUndo = async function(studentId, subjectId) {
   if (await AttendanceStore.undoLatestSubjectMark(studentId, subjectId)) {
     showToast("Logged entry reverted and subject unlocked!", "info");
     renderApp();
+  }
+};
+
+window.handleHistoryLogUndo = async function(studentId, logId) {
+  if (confirm("Are you sure you want to undo and remove this attendance entry?")) {
+    if (await AttendanceStore.undoLogEntry(studentId, logId)) {
+      showToast("Attendance entry reverted and subject unlocked!", "success");
+      renderApp();
+    }
   }
 };
 
