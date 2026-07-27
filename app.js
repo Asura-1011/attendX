@@ -624,7 +624,7 @@ function renderSubjectCard(studentId, subject) {
         </div>
       `}
 
-      <!-- Action Buttons Supporting 1-Period and 2-Period Continuous Classes -->
+      <!-- Action Buttons Supporting 1, 2, or 3 Periods -->
       ${lockInfo.isLocked ? `
         <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); margin-top: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
           <div style="font-size: 0.78rem;">
@@ -634,22 +634,22 @@ function renderSubjectCard(studentId, subject) {
             ↩️ Undo & Re-mark
           </button>
         </div>
-      ` : lockInfo.count === 1 && lockInfo.maxAllowed === 2 ? `
+      ` : lockInfo.count > 0 ? `
         <div style="margin-top: 0.75rem;">
           <div style="background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.35); padding: 0.45rem 0.75rem; border-radius: var(--radius-sm); margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem;">
-            <span>⏱️ <strong>Period 1 Logged (1/2)</strong> - Log Period 2:</span>
+            <span>⏱️ <strong>Period ${lockInfo.count} Logged (${lockInfo.count}/${lockInfo.maxAllowed})</strong> - Log Period ${lockInfo.count + 1}:</span>
             <button class="btn-secondary" onclick="handleDirectCardUndo('${studentId}', '${subject.id}')" style="font-size: 0.7rem; padding: 0.2rem 0.5rem; color: #f87171; border-color: rgba(239,68,68,0.4);">
-              ↩️ Undo 1st Period
+              ↩️ Undo Last Period
             </button>
           </div>
           <div class="subject-actions">
             <button class="btn-present" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', true)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              + Present (Period 2)
+              + Present (Period ${lockInfo.count + 1})
             </button>
             <button class="btn-absent" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', false)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              + Absent (Period 2)
+              + Absent (Period ${lockInfo.count + 1})
             </button>
           </div>
         </div>
@@ -657,11 +657,11 @@ function renderSubjectCard(studentId, subject) {
         <div class="subject-actions">
           <button class="btn-present" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', true)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            + Present ${lockInfo.maxAllowed === 2 ? '(Period 1)' : ''}
+            + Present ${lockInfo.maxAllowed > 1 ? '(Period 1)' : ''}
           </button>
           <button class="btn-absent" onclick="openMarkCalendarModal('${studentId}', '${subject.id}', false)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            + Absent ${lockInfo.maxAllowed === 2 ? '(Period 1)' : ''}
+            + Absent ${lockInfo.maxAllowed > 1 ? '(Period 1)' : ''}
           </button>
         </div>
       `}
