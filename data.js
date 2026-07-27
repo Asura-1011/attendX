@@ -1,6 +1,6 @@
 /**
  * Crescent Institute of Science & Technology (B.Tech AI & DS - Semester V Section C)
- * Core Data Handler with Smart Timestamped Cloud Database Integration
+ * Core Data Handler with Supabase Cloud REST Database & Custom Student Timetable Rules
  */
 
 // All Available Courses in Curriculum with Credit Capacities:
@@ -187,13 +187,14 @@ const RAW_WEEKLY_TIMETABLE = {
   ]
 };
 
-// Storage & Bulletproof Cross-Device Live Cloud Database Manager
+// Storage & Bulletproof Cross-Device Supabase + REST Cloud DB Manager
 class AttendanceStore {
-  static STORAGE_KEY = "crescent_student_accounts_v13";
-  static ACTIVE_USER_KEY = "crescent_active_session_v13";
+  static STORAGE_KEY = "crescent_student_accounts_v14";
+  static ACTIVE_USER_KEY = "crescent_active_session_v14";
   
-  // Public Persistent Cloud REST Database Endpoint (Shared across all devices: Phone, PC, Laptop, Tablet)
+  // Shared Live Cloud REST Database Endpoint (Shared across Phone, Laptop & PC)
   static CLOUD_DB_URL = "https://jsonblob.com/api/jsonBlob/019f9f49-49aa-7fac-b6b8-455c728193f7";
+  static SUPABASE_REST_URL = "https://hzmxkwqvhgnhftgqwjvg.supabase.co/rest/v1/students";
   static isLastSyncSuccess = true;
 
   static init() {
@@ -367,7 +368,7 @@ class AttendanceStore {
     return { success: true, student };
   }
 
-  // Get max allowed entries for a subject on a specific date based on official timetable
+  // Get max allowed entries for a subject on a specific date based on customized student lab timetable
   static getMaxEntriesForSubjectOnDate(studentId, subjectId, dateStr) {
     const students = this.getStudents();
     const student = students.find(s => s.id === studentId);
@@ -383,32 +384,49 @@ class AttendanceStore {
 
     const codeClean = (subject.code || "").toUpperCase().replace(/\s+/g, "");
 
-    // Continuous 2-period lab / integrated courses as specified in official timetable:
-    // Monday: 09:00-10:40 AM (CSD 3152/55/56) & 02:30-04:10 PM (CSD 3159)
+    // Student Grouping:
+    // Shaik Mohamed (std-1176) & Mohamed Omer Akhil (std-1164) vs Rest of Students
+    const isShaikOrAkhil = (student.id === "std-1176" || student.id === "std-1164" || student.rrn === "240171601176" || student.rrn === "240171601164");
+
+    // 1. MONDAY:
+    // - CSD 3159 (Internship I Lab): 2 Entries for ALL
+    // - Shaik & Akhil: CSD 3155 (Machine Learning Lab) -> 2 Entries
+    // - Rest of Students: CSD 3156 (Data & Security Lab) -> 2 Entries
     if (dayName === "Monday") {
-      if (codeClean.includes("CSD3152") || codeClean.includes("CSD3155") || codeClean.includes("CSD3156") || codeClean.includes("CSD3159")) {
-        return 2;
+      if (codeClean.includes("CSD3159")) return 2;
+      if (isShaikOrAkhil) {
+        if (codeClean.includes("CSD3155")) return 2;
+      } else {
+        if (codeClean.includes("CSD3156")) return 2;
       }
     }
 
-    // Tuesday: 11:00 AM-12:40 PM (CSD 3152/55/56)
+    // 2. TUESDAY:
+    // - Shaik & Akhil: CSD 3156 (Data & Security Lab) -> 2 Entries; CSD 3152 (Cloud Computing) -> 1 Entry
+    // - Rest of Students: CSD 3152 (Cloud Computing Services Lab + Theory) -> 3 ENTRIES ALLOWED!
     if (dayName === "Tuesday") {
-      if (codeClean.includes("CSD3152") || codeClean.includes("CSD3155") || codeClean.includes("CSD3156")) {
-        return 2;
+      if (isShaikOrAkhil) {
+        if (codeClean.includes("CSD3156")) return 2;
+        if (codeClean.includes("CSD3152")) return 1;
+      } else {
+        if (codeClean.includes("CSD3152")) return 3; // 2 for Lab + 1 for Theory = 3 Entries!
       }
     }
 
-    // Wednesday: 09:00-10:40 AM (GED 3101)
+    // 3. WEDNESDAY:
+    // - GED 3101 (Communication Skills Lab): 2 Entries for ALL
     if (dayName === "Wednesday") {
-      if (codeClean.includes("GED3101")) {
-        return 2;
-      }
+      if (codeClean.includes("GED3101")) return 2;
     }
 
-    // Friday: 02:30-04:10 PM (CSD 3152/55/56)
+    // 4. FRIDAY:
+    // - Shaik & Akhil: CSD 3152 (Cloud Computing Services Lab) -> 2 Entries
+    // - Rest of Students: CSD 3155 (Machine Learning Lab) -> 2 Entries
     if (dayName === "Friday") {
-      if (codeClean.includes("CSD3152") || codeClean.includes("CSD3155") || codeClean.includes("CSD3156")) {
-        return 2;
+      if (isShaikOrAkhil) {
+        if (codeClean.includes("CSD3152")) return 2;
+      } else {
+        if (codeClean.includes("CSD3155")) return 2;
       }
     }
 
@@ -425,7 +443,7 @@ class AttendanceStore {
     return student.history.filter(l => l.subjectId === subjectId && l.date === targetDate);
   }
 
-  // Anti-Cheating Lock Check for Date (Supports 1-period and 2-period continuous subjects)
+  // Anti-Cheating Lock Check for Date (Supports 1, 2, and 3 entries)
   static isSubjectLockedForDate(studentId, subjectId, dateStr) {
     const targetDate = dateStr || new Date().toISOString().split("T")[0];
     const maxAllowed = this.getMaxEntriesForSubjectOnDate(studentId, subjectId, targetDate);
